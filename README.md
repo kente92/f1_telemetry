@@ -29,7 +29,7 @@ L'application s'ouvre sur http://localhost:8501
 
 ```
 f1_telemetry/
-├── app.py           # Application principale
+├── app_streamlit.py           # Application principale
 ├── requirements.txt
 ├── README.md
 └── cache/           # Cache FastF1 (créé automatiquement)
