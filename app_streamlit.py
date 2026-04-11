@@ -395,7 +395,7 @@ with tab_race:
         sel_circuit = st.selectbox("Circuit", CIRCUITS, label_visibility="collapsed", key="race_circuit")
         st.markdown("<br>", unsafe_allow_html=True)
         load_btn = st.button("🏁  Charger la course", use_container_width=True, key="load_btn")
-        st.markdown("""<div style='margin-top:2rem;padding-top:1rem;border-top:1px solid #1e1e2e;font-size:0.7rem;color:#444;line-height:1.6;'>Données : FastF1 · Jolpica API<br>Cache : {_CACHE_DIR}</div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div style='margin-top:2rem;padding-top:1rem;border-top:1px solid #1e1e2e;font-size:0.7rem;color:#444;line-height:1.6;'>Données : FastF1 · Jolpica API<br>Cache : {_CACHE_DIR}</div>""", unsafe_allow_html=True)
 
     if not load_btn and "session_loaded" not in st.session_state:
         st.markdown("""<div style='text-align:center;padding:5rem 2rem;font-family:Barlow Condensed,sans-serif;'><div style='font-size:5rem;margin-bottom:1rem;'>🏎️</div><div style='font-size:1.2rem;letter-spacing:0.15em;text-transform:uppercase;color:#444;'>Sélectionnez une saison et un Grand Prix<br>puis cliquez sur Charger</div></div>""", unsafe_allow_html=True)
