@@ -532,10 +532,7 @@ with tab_race:
     elif map_d1 == map_d2:
         st.info("Sélectionnez deux pilotes différents pour la carte.")
 
-        else:
-            st.info("Données GPS indisponibles pour cette course.")
-    else:
-        st.info("Sélectionnez deux pilotes différents pour la carte.")
+
 
 
 # ─── ONGLET 2 — PRÉDICTIONS ───────────────────────────────────────────────────
