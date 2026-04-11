@@ -134,6 +134,17 @@ def get_race_results(year: int, circuit: str) -> pd.DataFrame:
         available = [c for c in cols if c in session.results.columns]
         results = session.results[available].copy()
         results = results.sort_values("Position")
+        # Récupère le meilleur tour depuis les laps si manquant
+        try:
+            for idx, row in results.iterrows():
+                if pd.isna(row.get("FastestLapTime")):
+                    laps = session.laps.pick_driver(row["Abbreviation"])
+                    if not laps.empty:
+                        fastest = laps.pick_fastest()
+                        if fastest is not None:
+                            results.at[idx, "FastestLapTime"] = fastest["LapTime"]
+        except Exception:
+            pass
         return results
     except Exception:
         return pd.DataFrame()
