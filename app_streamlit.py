@@ -477,63 +477,63 @@ with tab_race:
             disp[c] = disp[c].fillna("—").apply(lambda x: str(int(float(x))) if x != "—" else "—")
         st.dataframe(disp, use_container_width=True, hide_index=True)
 
-    # Télémétrie
-    st.markdown('<div class="section-title">📈 Télémétrie — Meilleur tour par pilote</div>', unsafe_allow_html=True)
+    # # Télémétrie
+    # st.markdown('<div class="section-title">📈 Télémétrie — Meilleur tour par pilote</div>', unsafe_allow_html=True)
 
-    all_drivers = sorted(session.laps["Driver"].unique().tolist())
+    # all_drivers = sorted(session.laps["Driver"].unique().tolist())
 
-    selected_drivers = st.multiselect(
-        "Pilotes affichés",
-        options=all_drivers,
-        default=all_drivers,
-        key="telem_drivers",
-    )
+    # selected_drivers = st.multiselect(
+    #     "Pilotes affichés",
+    #     options=all_drivers,
+    #     default=all_drivers,
+    #     key="telem_drivers",
+    # )
 
-    if selected_drivers:
-        telem_data = {}
-        prog = st.progress(0, text="Chargement télémétrie…")
-        for i, drv in enumerate(selected_drivers):
-            data = get_fastest_lap_telemetry(year, circuit, drv)
-            if data is not None:
-                telem_data[drv] = data
-            prog.progress((i + 1) / len(selected_drivers),
-                          text=f"Chargement {drv}… ({i+1}/{len(selected_drivers)})")
-        prog.empty()
+    # if selected_drivers:
+    #     telem_data = {}
+    #     prog = st.progress(0, text="Chargement télémétrie…")
+    #     for i, drv in enumerate(selected_drivers):
+    #         data = get_fastest_lap_telemetry(year, circuit, drv)
+    #         if data is not None:
+    #             telem_data[drv] = data
+    #         prog.progress((i + 1) / len(selected_drivers),
+    #                       text=f"Chargement {drv}… ({i+1}/{len(selected_drivers)})")
+    #     prog.empty()
 
-        if telem_data:
-            for fig in make_telemetry_charts(telem_data):
-                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-        else:
-            st.warning("Aucune télémétrie disponible.")
-    else:
-        st.info("Sélectionnez au moins un pilote.")
+    #     if telem_data:
+    #         for fig in make_telemetry_charts(telem_data):
+    #             st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    #     else:
+    #         st.warning("Aucune télémétrie disponible.")
+    # else:
+    #     st.info("Sélectionnez au moins un pilote.")
 
-    # Carte circuit
-    st.markdown('<div class="section-title">🗺️ Carte du circuit — Delta vitesse</div>', unsafe_allow_html=True)
-    mc1, mc2 = st.columns(2)
-    with mc1:
-        map_d1 = st.selectbox("Pilote 1 (carte)", all_drivers, key="map_d1", index=0)
-    with mc2:
-        map_d2 = st.selectbox("Pilote 2 (carte)", all_drivers, key="map_d2",
-                              index=min(1, len(all_drivers) - 1))
+    # # Carte circuit
+    # st.markdown('<div class="section-title">🗺️ Carte du circuit — Delta vitesse</div>', unsafe_allow_html=True)
+    # mc1, mc2 = st.columns(2)
+    # with mc1:
+    #     map_d1 = st.selectbox("Pilote 1 (carte)", all_drivers, key="map_d1", index=0)
+    # with mc2:
+    #     map_d2 = st.selectbox("Pilote 2 (carte)", all_drivers, key="map_d2",
+    #                           index=min(1, len(all_drivers) - 1))
     
-    map_btn = st.button("🗺️ Afficher la carte", key="map_btn")
+    # map_btn = st.button("🗺️ Afficher la carte", key="map_btn")
     
-    if map_btn:
-        if map_d1 == map_d2:
-            st.warning("Sélectionnez deux pilotes différents.")
-        else:
-            with st.spinner("Génération de la carte…"):
-                md1 = get_fastest_lap_telemetry(year, circuit, map_d1)
-                md2 = get_fastest_lap_telemetry(year, circuit, map_d2)
-            if md1 and md2 and "X" in md1["telemetry"].columns:
-                st.session_state["map_fig"] = make_track_map_comparison(md1, md2, map_d1, map_d2)
-            else:
-                st.session_state["map_fig"] = None
-                st.info("Données GPS indisponibles.")
+    # if map_btn:
+    #     if map_d1 == map_d2:
+    #         st.warning("Sélectionnez deux pilotes différents.")
+    #     else:
+    #         with st.spinner("Génération de la carte…"):
+    #             md1 = get_fastest_lap_telemetry(year, circuit, map_d1)
+    #             md2 = get_fastest_lap_telemetry(year, circuit, map_d2)
+    #         if md1 and md2 and "X" in md1["telemetry"].columns:
+    #             st.session_state["map_fig"] = make_track_map_comparison(md1, md2, map_d1, map_d2)
+    #         else:
+    #             st.session_state["map_fig"] = None
+    #             st.info("Données GPS indisponibles.")
     
-    if st.session_state.get("map_fig") is not None:
-        st.plotly_chart(st.session_state["map_fig"], use_container_width=True, config={"displayModeBar": False})
+    # if st.session_state.get("map_fig") is not None:
+    #     st.plotly_chart(st.session_state["map_fig"], use_container_width=True, config={"displayModeBar": False})
 
 
 # ─── ONGLET 2 — PRÉDICTIONS ───────────────────────────────────────────────────
