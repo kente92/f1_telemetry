@@ -478,35 +478,35 @@ with tab_race:
         st.dataframe(disp, use_container_width=True, hide_index=True)
 
     # # Télémétrie
-    # st.markdown('<div class="section-title">📈 Télémétrie — Meilleur tour par pilote</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">📈 Télémétrie — Meilleur tour par pilote</div>', unsafe_allow_html=True)
 
-    # all_drivers = sorted(session.laps["Driver"].unique().tolist())
+    all_drivers = sorted(session.laps["Driver"].unique().tolist())
 
-    # selected_drivers = st.multiselect(
-    #     "Pilotes affichés",
-    #     options=all_drivers,
-    #     default=all_drivers,
-    #     key="telem_drivers",
-    # )
+    selected_drivers = st.multiselect(
+        "Pilotes affichés",
+        options=all_drivers,
+        default=all_drivers,
+        key="telem_drivers",
+    )
 
-    # if selected_drivers:
-    #     telem_data = {}
-    #     prog = st.progress(0, text="Chargement télémétrie…")
-    #     for i, drv in enumerate(selected_drivers):
-    #         data = get_fastest_lap_telemetry(year, circuit, drv)
-    #         if data is not None:
-    #             telem_data[drv] = data
-    #         prog.progress((i + 1) / len(selected_drivers),
-    #                       text=f"Chargement {drv}… ({i+1}/{len(selected_drivers)})")
-    #     prog.empty()
+    if selected_drivers:
+        telem_data = {}
+        prog = st.progress(0, text="Chargement télémétrie…")
+        for i, drv in enumerate(selected_drivers):
+            data = get_fastest_lap_telemetry(year, circuit, drv)
+            if data is not None:
+                telem_data[drv] = data
+            prog.progress((i + 1) / len(selected_drivers),
+                          text=f"Chargement {drv}… ({i+1}/{len(selected_drivers)})")
+        prog.empty()
 
-    #     if telem_data:
-    #         for fig in make_telemetry_charts(telem_data):
-    #             st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-    #     else:
-    #         st.warning("Aucune télémétrie disponible.")
-    # else:
-    #     st.info("Sélectionnez au moins un pilote.")
+        if telem_data:
+            for fig in make_telemetry_charts(telem_data):
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        else:
+            st.warning("Aucune télémétrie disponible.")
+    else:
+        st.info("Sélectionnez au moins un pilote.")
 
     # # Carte circuit
     # st.markdown('<div class="section-title">🗺️ Carte du circuit — Delta vitesse</div>', unsafe_allow_html=True)
