@@ -1,6 +1,7 @@
 """
-app_streamlit.py — Comparateur de télémétrie F1
-======================================
+app_streamlit.py — F1 App : Résultats + Télémétrie + Prédictions
+=================================================================
+Version Streamlit Community Cloud.
 Lance avec :  streamlit run app_streamlit.py
 """
 
@@ -8,6 +9,9 @@ import warnings
 import datetime
 warnings.filterwarnings("ignore")
 
+import tempfile
+import joblib
+import requests
 import streamlit as st
 import fastf1
 import fastf1.plotting
@@ -15,172 +19,67 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import tempfile
-import datetime
+from pathlib import Path
+from sklearn.preprocessing import StandardScaler
 
-# ── Cache fastf1 ───────────────────────────────────────────────────────────────
-fastf1.Cache.enable_cache(__import__("tempfile").gettempdir())
+# Détection automatique du dossier de cache
+# VPS : /var/cache/f1 (persistant) — Streamlit Cloud / autre : tempfile (éphémère)
+def _get_cache_dir() -> str:
+    vps_cache = "/var/cache/f1"
+    try:
+        import os
+        os.makedirs(vps_cache, exist_ok=True)
+        # Vérifie qu'on peut écrire dedans
+        test_file = os.path.join(vps_cache, ".write_test")
+        with open(test_file, "w") as f:
+            f.write("ok")
+        os.remove(test_file)
+        return vps_cache
+    except Exception:
+        return tempfile.gettempdir()
 
-# ── Config page ────────────────────────────────────────────────────────────────
+_CACHE_DIR = _get_cache_dir()
+fastf1.Cache.enable_cache(_CACHE_DIR)
+
+MODELS_DIR = Path(__file__).parent / "models"
+
+@st.cache_resource
+def load_prediction_model(with_grid: bool):
+    fname = "f1_model_with_grid.joblib" if with_grid else "f1_model_no_grid.joblib"
+    path  = MODELS_DIR / fname
+    if not path.exists():
+        return None
+    return joblib.load(path)
+
 st.set_page_config(
-    page_title="F1 Telemetry",
-    page_icon="🏎️",
-    layout="wide",
-    initial_sidebar_state="expanded",
+    page_title="F1 App", page_icon="🏎️",
+    layout="wide", initial_sidebar_state="expanded",
 )
 
-# ── CSS ────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@300;400;500&display=swap');
-
-  html, body, [class*="css"] {
-    font-family: 'Barlow', sans-serif;
-    background-color: #0a0a0f;
-    color: #e8e8e8;
-  }
+  html, body, [class*="css"] { font-family: 'Barlow', sans-serif; background-color: #0a0a0f; color: #e8e8e8; }
   .main { background-color: #0a0a0f; }
   .block-container { padding-top: 2rem; padding-bottom: 2rem; }
-
-  /* Header */
-  .f1-header {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-weight: 900;
-    font-size: 3.2rem;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    background: linear-gradient(90deg, #e8002d 0%, #ff6b6b 50%, #ffffff 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    margin-bottom: 0;
-    line-height: 1;
-  }
-  .f1-sub {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-weight: 400;
-    font-size: 1rem;
-    letter-spacing: 0.25em;
-    text-transform: uppercase;
-    color: #666;
-    margin-top: 0.2rem;
-    margin-bottom: 2rem;
-  }
-
-  /* Cards pilotes */
-  .driver-card {
-    background: #13131a;
-    border-radius: 8px;
-    padding: 1.2rem 1.5rem;
-    border-left: 4px solid var(--color);
-    margin-bottom: 1rem;
-  }
-  .driver-name {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-weight: 700;
-    font-size: 1.4rem;
-    text-transform: uppercase;
-    color: var(--color);
-    letter-spacing: 0.05em;
-  }
-  .driver-meta {
-    font-size: 0.8rem;
-    color: #666;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-
-  /* Metric cards */
-  .metric-row {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-  }
-  .metric-card {
-    background: #13131a;
-    border-radius: 6px;
-    padding: 1rem 1.4rem;
-    flex: 1;
-    border-top: 2px solid #e8002d;
-  }
-  .metric-label {
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.15em;
-    color: #666;
-    margin-bottom: 0.3rem;
-  }
-  .metric-value {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-weight: 700;
-    font-size: 1.6rem;
-    color: #ffffff;
-  }
-  .metric-delta {
-    font-size: 0.75rem;
-    color: #888;
-    margin-top: 0.1rem;
-  }
-
-  /* Sidebar */
-  section[data-testid="stSidebar"] {
-    background-color: #0d0d14 !important;
-    border-right: 1px solid #1e1e2e;
-  }
-  section[data-testid="stSidebar"] .stSelectbox label,
-  section[data-testid="stSidebar"] .stMarkdown p {
-    color: #aaa !important;
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-  }
-
-  /* Divider */
-  .section-title {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-weight: 600;
-    font-size: 0.85rem;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: #e8002d;
-    margin: 1.5rem 0 0.8rem 0;
-    padding-bottom: 0.4rem;
-    border-bottom: 1px solid #1e1e2e;
-  }
-
-  /* Buttons */
-  .stButton > button {
-    background: #e8002d !important;
-    color: white !important;
-    border: none !important;
-    font-family: 'Barlow Condensed', sans-serif !important;
-    font-weight: 700 !important;
-    font-size: 1rem !important;
-    letter-spacing: 0.1em !important;
-    text-transform: uppercase !important;
-    padding: 0.6rem 2rem !important;
-    border-radius: 4px !important;
-    width: 100%;
-  }
-  .stButton > button:hover {
-    background: #ff1a3e !important;
-    transform: translateY(-1px);
-  }
-
-  /* Spinner */
-  .stSpinner > div { border-top-color: #e8002d !important; }
-
-  /* Selectbox */
-  .stSelectbox > div > div {
-    background-color: #13131a !important;
-    border-color: #2a2a3a !important;
-    color: #e8e8e8 !important;
-  }
+  .f1-header { font-family: 'Barlow Condensed', sans-serif; font-weight: 900; font-size: 3.2rem; letter-spacing: 0.05em; text-transform: uppercase; background: linear-gradient(90deg, #e8002d 0%, #ff6b6b 50%, #ffffff 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin-bottom: 0; line-height: 1; }
+  .f1-sub { font-family: 'Barlow Condensed', sans-serif; font-weight: 400; font-size: 1rem; letter-spacing: 0.25em; text-transform: uppercase; color: #666; margin-top: 0.2rem; margin-bottom: 2rem; }
+  .section-title { font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 0.85rem; letter-spacing: 0.2em; text-transform: uppercase; color: #e8002d; margin: 1.5rem 0 0.8rem 0; padding-bottom: 0.4rem; border-bottom: 1px solid #1e1e2e; }
+  .podium-card { background: #13131a; border-radius: 8px; padding: 1.2rem 1.5rem; border-left: 4px solid var(--color); margin-bottom: 0.8rem; }
+  .podium-name { font-family: 'Barlow Condensed', sans-serif; font-weight: 900; font-size: 1.6rem; text-transform: uppercase; color: var(--color); letter-spacing: 0.05em; }
+  .podium-meta { font-size: 0.75rem; color: #666; letter-spacing: 0.1em; text-transform: uppercase; margin-top: 0.2rem; }
+  .podium-time { font-family: 'Barlow Condensed', sans-serif; font-size: 1.4rem; font-weight: 700; color: #ffffff; margin-top: 0.4rem; }
+  section[data-testid="stSidebar"] { background-color: #0d0d14 !important; border-right: 1px solid #1e1e2e; }
+  .stButton > button { background: #e8002d !important; color: white !important; border: none !important; font-family: 'Barlow Condensed', sans-serif !important; font-weight: 700 !important; font-size: 1rem !important; letter-spacing: 0.1em !important; text-transform: uppercase !important; padding: 0.6rem 2rem !important; border-radius: 4px !important; width: 100%; }
+  .stButton > button:hover { background: #ff1a3e !important; }
+  .stMultiSelect > div > div { background-color: #13131a !important; border-color: #2a2a3a !important; }
+  .stSelectbox > div > div { background-color: #13131a !important; border-color: #2a2a3a !important; }
 </style>
 """, unsafe_allow_html=True)
 
-
-# ── Données statiques ──────────────────────────────────────────────────────────
+PLOT_BG    = "#0a0a0f"
+GRID_COLOR = "#1e1e2e"
+FONT_COLOR = "#888888"
 
 CIRCUITS = [
     "Bahrain", "Saudi Arabia", "Australia", "Japan", "China",
@@ -189,654 +88,540 @@ CIRCUITS = [
     "Italy", "Azerbaijan", "Singapore", "United States", "Mexico",
     "Brazil", "Las Vegas", "Qatar", "Abu Dhabi",
 ]
-
 YEARS = list(range(datetime.date.today().year, 2017, -1))
 
-# Couleurs équipes fastf1 (fallback si non dispo)
-DRIVER_COLORS = {
-    "default_1": "#e8002d",
-    "default_2": "#00d2ff",
+JOLPICA_BASE = "https://api.jolpi.ca/ergast/f1"
+FEATURE_COLS_GRID    = ["grid", "driverPoints", "driverStandingPosition",
+                         "driverWins", "constructorPoints",
+                         "constructorStandingPosition", "constructorWins"]
+FEATURE_COLS_NO_GRID = ["driverPoints", "driverStandingPosition",
+                         "driverWins", "constructorPoints",
+                         "constructorStandingPosition", "constructorWins"]
+CIRCUITS_PRED = {
+    "Bahrain": "bahrain", "Saudi Arabia": "jeddah", "Australia": "albert_park",
+    "Japan": "suzuka", "China": "shanghai", "Miami": "miami",
+    "Emilia Romagna": "imola", "Monaco": "monaco", "Canada": "villeneuve",
+    "Spain": "catalunya", "Austria": "red_bull_ring", "Great Britain": "silverstone",
+    "Hungary": "hungaroring", "Belgium": "spa", "Netherlands": "zandvoort",
+    "Italy": "monza", "Azerbaijan": "baku", "Singapore": "marina_bay",
+    "United States": "americas", "Mexico": "rodriguez", "Brazil": "interlagos",
+    "Las Vegas": "vegas", "Qatar": "losail", "Abu Dhabi": "yas_marina",
 }
 
 
-# ── Fonctions utilitaires ──────────────────────────────────────────────────────
+# ─── TÉLÉMÉTRIE — fonctions ───────────────────────────────────────────────────
 
-@st.cache_data(show_spinner=False)
-def get_session_drivers(year: int, circuit: str) -> list[str]:
-    """Retourne la liste des abréviations pilotes pour une session."""
-    try:
-        session = fastf1.get_session(year, circuit, "R")
-        session.load(laps=True, telemetry=False, weather=False, messages=False)
-        drivers = session.laps["Driver"].unique().tolist()
-        return sorted(drivers)
-    except Exception as e:
-        return []
-
-
-@st.cache_data(show_spinner=False)
-def get_driver_lap_numbers(year: int, circuit: str, driver: str) -> list[int]:
-    """Retourne la liste des numéros de tours valides pour un pilote."""
-    try:
-        session = fastf1.get_session(year, circuit, "R")
-        session.load(laps=True, telemetry=False, weather=False, messages=False)
-        laps = session.laps.pick_driver(driver).pick_quicklaps()
-        return sorted(laps["LapNumber"].astype(int).tolist())
-    except Exception:
-        return []
-
-
-@st.cache_data(show_spinner=False)
-def load_lap_telemetry(
-    year: int, circuit: str, driver: str, lap_mode: str, lap_number: int = 0
-) -> dict | None:
-    """
-    Charge la télémétrie d'un tour.
-    lap_mode : "fastest" | "specific"
-    lap_number : ignoré si lap_mode == "fastest"
-    """
+@st.cache_resource(show_spinner=False)
+def load_session(year: int, circuit: str):
     try:
         session = fastf1.get_session(year, circuit, "R")
         session.load(laps=True, telemetry=True, weather=False, messages=False)
+        return session
+    except Exception as e:
+        st.error(f"Erreur chargement session : {e}")
+        return None
 
-        driver_laps = session.laps.pick_driver(driver)
 
-        if lap_mode == "fastest":
-            lap = driver_laps.pick_fastest()
-            lap_label = "Meilleur tour"
-        else:
-            lap = driver_laps[driver_laps["LapNumber"] == lap_number]
-            if lap.empty:
-                st.error(f"Tour {lap_number} introuvable pour {driver}")
-                return None
-            lap = lap.iloc[0]
-            lap_label = f"Tour {lap_number}"
+@st.cache_data(show_spinner=False)
+def get_race_results(year: int, circuit: str) -> pd.DataFrame:
+    try:
+        session = load_session(year, circuit)
+        if session is None:
+            return pd.DataFrame()
+        cols = ["DriverNumber", "Abbreviation", "FullName", "TeamName",
+                "GridPosition", "Position", "Status", "Points",
+                "Time", "FastestLap", "FastestLapTime", "FastestLapRank"]
+        available = [c for c in cols if c in session.results.columns]
+        results = session.results[available].copy()
+        results = results.sort_values("Position")
+        return results
+    except Exception:
+        return pd.DataFrame()
 
-        if lap is None or (hasattr(lap, "empty") and lap.empty):
+
+@st.cache_data(show_spinner=False)
+def get_fastest_lap_telemetry(year: int, circuit: str, driver: str) -> dict | None:
+    try:
+        session = load_session(year, circuit)
+        if session is None:
             return None
-
+        lap = session.laps.pick_driver(driver).pick_fastest()
+        if lap is None or (hasattr(lap, 'empty') and lap.empty):
+            return None
         tel = lap.get_telemetry().add_distance()
-
         try:
             color = fastf1.plotting.get_driver_color(driver, session)
         except Exception:
             color = None
-
-        return {
-            "driver":    driver,
-            "year":      year,
-            "circuit":   circuit,
-            "lap_time":  lap["LapTime"],
-            "lap_label": lap_label,
-            "lap_number": int(lap["LapNumber"]) if lap_mode == "fastest" else lap_number,
-            "telemetry": tel,
-            "color":     color,
-        }
-    except Exception as e:
-        st.error(f"Erreur chargement {driver} {year} {circuit} : {e}")
+        return {"driver": driver, "lap_time": lap["LapTime"], "telemetry": tel, "color": color}
+    except Exception:
         return None
 
 
 def format_laptime(td) -> str:
-    """Formate un timedelta en MM:SS.mmm"""
     try:
         total_s = td.total_seconds()
-        minutes = int(total_s // 60)
-        seconds = total_s % 60
-        return f"{minutes}:{seconds:06.3f}"
+        return f"{int(total_s // 60)}:{total_s % 60:06.3f}"
     except Exception:
         return "N/A"
 
 
-def delta_label(v1, v2, unit="", lower_is_better=True) -> str:
-    """Génère un label de delta coloré."""
-    if v1 is None or v2 is None:
-        return ""
-    diff = v1 - v2
-    sign = "+" if diff > 0 else ""
-    arrow = "▲" if diff > 0 else "▼"
-    return f"{arrow} {sign}{diff:.1f}{unit}"
-
-
-# ── Graphiques Plotly ──────────────────────────────────────────────────────────
-
-PLOT_BG = "#0a0a0f"
-GRID_COLOR = "#1e1e2e"
-FONT_COLOR = "#888888"
-
-
-def make_telemetry_figure(data1: dict, data2: dict) -> go.Figure:
-    """
-    Crée la figure principale avec 4 sous-graphiques :
-    Speed / Throttle / Brake / Gear
-    en fonction de la distance au tour.
-    """
-    t1 = data1["telemetry"]
-    t2 = data2["telemetry"]
-    c1 = data1["color"] or DRIVER_COLORS["default_1"]
-    c2 = data2["color"] or DRIVER_COLORS["default_2"]
-    d1 = data1["driver"]
-    d2 = data2["driver"]
-
-    fig = make_subplots(
-        rows=4, cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.04,
-        subplot_titles=("VITESSE (km/h)", "ACCÉLÉRATEUR (%)", "FREIN (%)", "RAPPORT"),
-        row_heights=[0.35, 0.22, 0.22, 0.21],
-    )
-
-    # Channels : Speed, Throttle, Brake, nGear
+def make_telemetry_charts(telem_data: dict) -> list:
     channels = [
-        ("Speed",    1, "%{y:.0f} km/h"),
-        ("Throttle", 2, "%{y:.0f}%%"),
-        ("Brake",    3, "%{y:.0f}%%"),
-        ("nGear",    4, "Rapport %{y}"),
+        ("Speed", "VITESSE (km/h)", 300),
+        ("Brake", "FREIN (%)",       180),
+        ("nGear", "RAPPORT",         160),
     ]
-
-    for col, (channel, row, htmpl) in enumerate(channels):
-        if channel not in t1.columns or channel not in t2.columns:
-            continue
-
-        # Pilote 1
-        fig.add_trace(go.Scatter(
-            x=t1["Distance"], y=t1[channel],
-            name=f"{d1} ({data1['year']})",
-            line=dict(color=c1, width=2),
-            hovertemplate=f"<b>{d1}</b><br>Dist: %{{x:.0f}}m<br>" + htmpl + "<extra></extra>",
-            legendgroup="p1",
-            showlegend=(row == 1),
-        ), row=row, col=1)
-
-        # Pilote 2
-        fig.add_trace(go.Scatter(
-            x=t2["Distance"], y=t2[channel],
-            name=f"{d2} ({data2['year']})",
-            line=dict(color=c2, width=2, dash="dot"),
-            hovertemplate=f"<b>{d2}</b><br>Dist: %{{x:.0f}}m<br>" + htmpl + "<extra></extra>",
-            legendgroup="p2",
-            showlegend=(row == 1),
-        ), row=row, col=1)
-
-    # Mise en forme globale
-    fig.update_layout(
-        height=700,
-        paper_bgcolor=PLOT_BG,
-        plot_bgcolor=PLOT_BG,
-        font=dict(family="Barlow Condensed, sans-serif", color=FONT_COLOR, size=11),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom", y=1.02,
-            xanchor="right", x=1,
-            font=dict(size=13, color="#cccccc"),
-            bgcolor="rgba(0,0,0,0)",
-        ),
-        margin=dict(l=60, r=30, t=60, b=40),
-        hovermode="x unified",
-    )
-
-    # Axes
-    for i in range(1, 5):
-        fig.update_xaxes(
-            row=i, col=1,
-            gridcolor=GRID_COLOR, zeroline=False,
-            tickfont=dict(color=FONT_COLOR),
-            title_font=dict(color=FONT_COLOR),
+    figures = []
+    for channel, title, height in channels:
+        fig = go.Figure()
+        for abbr, data in telem_data.items():
+            t = data["telemetry"]
+            if channel not in t.columns:
+                continue
+            c = data["color"] or "#e8002d"
+            y = t["Brake"].astype(float) * 100 if channel == "Brake" else t[channel]
+            fig.add_trace(go.Scatter(
+                x=t["Distance"], y=y, name=abbr,
+                line=dict(color=c, width=1.8),
+                hovertemplate=f"<b>{abbr}</b> — %{{y:.1f}}<extra></extra>",
+            ))
+        fig.update_layout(
+            title=dict(text=title, font=dict(family="Barlow Condensed", size=12, color="#e8002d")),
+            height=height, paper_bgcolor=PLOT_BG, plot_bgcolor=PLOT_BG,
+            font=dict(family="Barlow Condensed", color=FONT_COLOR),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                        font=dict(size=11, color="#ccc"), bgcolor="rgba(0,0,0,0)"),
+            margin=dict(l=60, r=30, t=40, b=30),
+            hovermode="x unified",
+            xaxis=dict(gridcolor=GRID_COLOR, zeroline=False, tickfont=dict(color=FONT_COLOR)),
+            yaxis=dict(gridcolor=GRID_COLOR, zeroline=False, tickfont=dict(color=FONT_COLOR)),
         )
-        fig.update_yaxes(
-            row=i, col=1,
-            gridcolor=GRID_COLOR, zeroline=False,
-            tickfont=dict(color=FONT_COLOR),
-        )
-
-    # Titre axe X uniquement en bas
-    fig.update_xaxes(title_text="Distance (m)", row=4, col=1,
-                     title_font=dict(color="#888", size=11))
-
-    # Titres sous-graphiques en rouge F1
-    for annotation in fig.layout.annotations:
-        annotation.font.color = "#e8002d"
-        annotation.font.size = 11
-        annotation.font.family = "Barlow Condensed, sans-serif"
-
-    return fig
+        figures.append(fig)
+    return figures
 
 
-def make_delta_figure(data1: dict, data2: dict) -> go.Figure:
-    """
-    Graphique delta de vitesse entre les deux pilotes (pilote1 - pilote2).
-    Zone verte = pilote1 plus rapide, zone rouge = pilote2 plus rapide.
-    """
-    t1 = data1["telemetry"].copy()
-    t2 = data2["telemetry"].copy()
-    c1 = data1["color"] or DRIVER_COLORS["default_1"]
-    c2 = data2["color"] or DRIVER_COLORS["default_2"]
-
-    # Interpolation sur la même grille de distance
-    dist_max = min(t1["Distance"].max(), t2["Distance"].max())
-    dist_grid = np.linspace(0, dist_max, 1000)
-
-    spd1 = np.interp(dist_grid, t1["Distance"], t1["Speed"])
-    spd2 = np.interp(dist_grid, t2["Distance"], t2["Speed"])
-    delta = spd1 - spd2
-
-    fig = go.Figure()
-
-    # Zone positive (p1 plus vite)
-    fig.add_trace(go.Scatter(
-        x=dist_grid, y=np.where(delta > 0, delta, 0),
-        fill="tozeroy",
-        fillcolor=f"rgba({int(c1[1:3],16)},{int(c1[3:5],16)},{int(c1[5:7],16)},0.25)",
-        line=dict(width=0),
-        name=f"{data1['driver']} plus rapide",
-        hoverinfo="skip",
-    ))
-
-    # Zone négative (p2 plus vite)
-    fig.add_trace(go.Scatter(
-        x=dist_grid, y=np.where(delta < 0, delta, 0),
-        fill="tozeroy",
-        fillcolor=f"rgba({int(c2[1:3],16)},{int(c2[3:5],16)},{int(c2[5:7],16)},0.25)",
-        line=dict(width=0),
-        name=f"{data2['driver']} plus rapide",
-        hoverinfo="skip",
-    ))
-
-    # Ligne delta
-    fig.add_trace(go.Scatter(
-        x=dist_grid, y=delta,
-        line=dict(color="#ffffff", width=1.5),
-        name="Δ Vitesse",
-        hovertemplate="Dist: %{x:.0f}m<br>Δ: %{y:.1f} km/h<extra></extra>",
-    ))
-
-    # Ligne zéro
-    fig.add_hline(y=0, line_dash="dash", line_color="#333", line_width=1)
-
-    fig.update_layout(
-        title=dict(
-            text=f"DELTA VITESSE — {data1['driver']} {data1['year']} vs {data2['driver']} {data2['year']}",
-            font=dict(family="Barlow Condensed", size=13, color="#e8002d"),
-        ),
-        height=220,
-        paper_bgcolor=PLOT_BG,
-        plot_bgcolor=PLOT_BG,
-        font=dict(family="Barlow Condensed, sans-serif", color=FONT_COLOR),
-        legend=dict(
-            orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-            font=dict(size=11, color="#cccccc"),
-            bgcolor="rgba(0,0,0,0)",
-        ),
-        margin=dict(l=60, r=30, t=50, b=40),
-        xaxis=dict(gridcolor=GRID_COLOR, zeroline=False,
-                   title="Distance (m)", title_font=dict(color="#888", size=11)),
-        yaxis=dict(gridcolor=GRID_COLOR, zeroline=False,
-                   title="Δ km/h", title_font=dict(color="#888", size=11)),
-        hovermode="x unified",
-    )
-    return fig
-
-
-SPEED_COLORSCALE = [
-    [0.0, "#1a0a00"],
-    [0.3, "#cc2200"],
-    [0.6, "#ffaa00"],
-    [0.8, "#ffee00"],
-    [1.0, "#00ffcc"],
-]
-
-def _base_map_layout(title: str, height: int = 360) -> dict:
-    """Layout commun aux trois cartes."""
-    return dict(
-        height=height,
-        paper_bgcolor=PLOT_BG,
-        plot_bgcolor=PLOT_BG,
-        font=dict(family="Barlow Condensed, sans-serif", color=FONT_COLOR),
-        legend=dict(
-            orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-            font=dict(size=11, color="#cccccc"),
-            bgcolor="rgba(0,0,0,0)",
-        ),
-        margin=dict(l=10, r=10, t=40, b=10),
-        xaxis=dict(visible=False, scaleanchor="y", scaleratio=1),
-        yaxis=dict(visible=False),
-        title=dict(
-            text=title,
-            font=dict(family="Barlow Condensed", size=12, color="#e8002d"),
-        ),
-    )
-
-
-def make_track_single(data: dict, label: str) -> go.Figure | None:
-    """Carte vitesse d'un seul pilote."""
-    t = data["telemetry"]
-    if "X" not in t.columns or "Y" not in t.columns:
-        return None
-
-    # Fond gris du circuit (contour)
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=t["X"], y=t["Y"],
-        mode="lines",
-        line=dict(color="#2a2a3a", width=8),
-        hoverinfo="skip",
-        showlegend=False,
-    ))
-    # Points colorés par vitesse
-    fig.add_trace(go.Scatter(
-        x=t["X"], y=t["Y"],
-        mode="markers",
-        marker=dict(
-            color=t["Speed"],
-            colorscale=SPEED_COLORSCALE,
-            size=4,
-            colorbar=dict(
-                title=dict(text="km/h", font=dict(color="#888", size=9)),
-                tickfont=dict(color="#888", size=8),
-                thickness=10, len=0.7,
-                x=1.02,
-            ),
-            showscale=True,
-        ),
-        name=label,
-        hovertemplate=f"<b>{label}</b><br>Vitesse: %{{marker.color:.0f}} km/h<extra></extra>",
-    ))
-    fig.update_layout(**_base_map_layout(label))
-    return fig
-
-
-def make_track_delta_map(data1: dict, data2: dict, label1: str, label2: str) -> go.Figure | None:
-    """
-    Carte du circuit colorée par le delta de vitesse (pilote1 - pilote2).
-    Vert = pilote1 plus rapide, Rouge = pilote2 plus rapide.
-    """
+def make_track_map_comparison(data1: dict, data2: dict, label1: str, label2: str):
     t1 = data1["telemetry"]
     t2 = data2["telemetry"]
+    c1 = data1["color"] or "#e8002d"
+    c2 = data2["color"] or "#00d2ff"
     if "X" not in t1.columns or "Y" not in t1.columns:
         return None
-
-    # Interpolation du delta sur la grille de distance de t1
-    import numpy as np
     dist_max = min(t1["Distance"].max(), t2["Distance"].max())
-    mask1 = t1["Distance"] <= dist_max
-    mask2 = t2["Distance"] <= dist_max
-
-    x_interp = t1.loc[mask1, "X"].values
-    y_interp = t1.loc[mask1, "Y"].values
-    dist1    = t1.loc[mask1, "Distance"].values
-    spd1     = t1.loc[mask1, "Speed"].values
-    spd2_interp = np.interp(dist1, t2.loc[mask2, "Distance"].values, t2.loc[mask2, "Speed"].values)
-    delta    = spd1 - spd2_interp
-
+    m1 = t1["Distance"] <= dist_max
+    m2 = t2["Distance"] <= dist_max
+    x_ref = t1.loc[m1, "X"].values
+    y_ref = t1.loc[m1, "Y"].values
+    dist1 = t1.loc[m1, "Distance"].values
+    spd1  = t1.loc[m1, "Speed"].values
+    spd2  = np.interp(dist1, t2.loc[m2, "Distance"].values, t2.loc[m2, "Speed"].values)
+    delta = spd1 - spd2
+    dmax  = float(abs(delta).max()) or 1.0
     fig = go.Figure()
-    # Fond circuit
+    fig.add_trace(go.Scatter(x=x_ref, y=y_ref, mode="lines",
+                             line=dict(color="#2a2a3a", width=8),
+                             hoverinfo="skip", showlegend=False))
     fig.add_trace(go.Scatter(
-        x=x_interp, y=y_interp,
-        mode="lines",
-        line=dict(color="#2a2a3a", width=8),
-        hoverinfo="skip", showlegend=False,
-    ))
-    # Delta coloré
-    fig.add_trace(go.Scatter(
-        x=x_interp, y=y_interp,
-        mode="markers",
+        x=x_ref, y=y_ref, mode="markers",
         marker=dict(
             color=delta,
-            colorscale=[
-                [0.0, "#e8002d"],
-                [0.5, "#1e1e2e"],
-                [1.0, "#00d2ff"],
-            ],
-            size=4,
-            colorbar=dict(
-                title=dict(text="Δ km/h", font=dict(color="#888", size=9)),
-                tickfont=dict(color="#888", size=8),
-                thickness=10, len=0.7,
-                x=1.02,
-            ),
+            colorscale=[[0.0, c2], [0.5, "#1e1e2e"], [1.0, c1]],
+            size=4, cmin=-dmax, cmax=dmax,
+            colorbar=dict(title=dict(text="Δ km/h", font=dict(color="#888", size=9)),
+                          tickfont=dict(color="#888", size=8), thickness=10, len=0.7, x=1.02),
             showscale=True,
-            cmin=float(-abs(delta).max()),
-            cmax=float(abs(delta).max()),
         ),
-        name=f"Δ vitesse",
-        hovertemplate="<b>Δ</b> %{marker.color:.1f} km/h<extra></extra>",
+        name="Δ vitesse",
+        hovertemplate="Δ %{marker.color:.1f} km/h<extra></extra>",
     ))
-
-    fig.update_layout(**_base_map_layout(f"DELTA CARTE — {label1} (bleu) vs {label2} (rouge)"))
+    fig.update_layout(
+        height=400, paper_bgcolor=PLOT_BG, plot_bgcolor=PLOT_BG,
+        font=dict(family="Barlow Condensed", color=FONT_COLOR),
+        margin=dict(l=10, r=60, t=50, b=10),
+        xaxis=dict(visible=False, scaleanchor="y", scaleratio=1),
+        yaxis=dict(visible=False),
+        title=dict(text=f"CARTE — {label1} (rouge/couleur) vs {label2} (bleu/couleur)",
+                   font=dict(family="Barlow Condensed", size=12, color="#e8002d")),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                    font=dict(size=11, color="#ccc"), bgcolor="rgba(0,0,0,0)"),
+    )
     return fig
 
 
-# ── Sidebar ────────────────────────────────────────────────────────────────────
+# ─── PRÉDICTION — fonctions ───────────────────────────────────────────────────
 
-with st.sidebar:
-    st.markdown("""
-    <div style='font-family: Barlow Condensed, sans-serif;
-                font-weight: 900; font-size: 1.5rem;
-                color: #e8002d; letter-spacing: 0.1em;
-                text-transform: uppercase; margin-bottom: 1.5rem;'>
-        ⬡ Configuration
-    </div>
-    """, unsafe_allow_html=True)
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_standings(year: int, round_num: int):
+    prev = round_num - 1
+    drv_rows, cst_rows = [], []
+    if prev == 0:
+        return pd.DataFrame(), pd.DataFrame()
+    try:
+        r = requests.get(f"{JOLPICA_BASE}/{year}/{prev}/driverStandings.json", timeout=10)
+        data = r.json()["MRData"]["StandingsTable"]["StandingsLists"]
+        if data:
+            for s in data[0]["DriverStandings"]:
+                drv_rows.append({
+                    "driverId": s["Driver"]["driverId"],
+                    "driverName": f"{s['Driver']['givenName']} {s['Driver']['familyName']}",
+                    "constructorId": s["Constructors"][0]["constructorId"],
+                    "constructorName": s["Constructors"][0]["name"],
+                    "driverPoints": float(s["points"]),
+                    "driverStandingPosition": int(s["position"]),
+                    "driverWins": int(s["wins"]),
+                })
+    except Exception as e:
+        st.warning(f"Standings pilotes indisponibles : {e}")
+    try:
+        r = requests.get(f"{JOLPICA_BASE}/{year}/{prev}/constructorStandings.json", timeout=10)
+        data = r.json()["MRData"]["StandingsTable"]["StandingsLists"]
+        if data:
+            for s in data[0]["ConstructorStandings"]:
+                cst_rows.append({
+                    "constructorId": s["Constructor"]["constructorId"],
+                    "constructorPoints": float(s["points"]),
+                    "constructorStandingPosition": int(s["position"]),
+                    "constructorWins": int(s["wins"]),
+                })
+    except Exception as e:
+        st.warning(f"Standings écuries indisponibles : {e}")
+    return pd.DataFrame(drv_rows), pd.DataFrame(cst_rows)
 
-    st.markdown('<p class="section-title">Circuit</p>', unsafe_allow_html=True)
-    circuit = st.selectbox("Circuit", CIRCUITS, label_visibility="collapsed")
 
-    st.markdown('<p class="section-title">Pilote 1</p>', unsafe_allow_html=True)
-    year1 = st.selectbox("Année 1", YEARS, key="year1", label_visibility="collapsed",
-                         format_func=lambda y: f"Saison {y}")
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_qualifying_grid(year: int, round_num: int) -> dict:
+    try:
+        r = requests.get(f"{JOLPICA_BASE}/{year}/{round_num}/qualifying.json", timeout=10)
+        data = r.json()["MRData"]["RaceTable"]["Races"]
+        if not data:
+            return {}
+        return {res["Driver"]["driverId"]: int(res["position"])
+                for res in data[0].get("QualifyingResults", [])}
+    except Exception:
+        return {}
 
-    drivers1 = get_session_drivers(year1, circuit)
-    driver1 = st.selectbox(
-        "Pilote 1", drivers1 if drivers1 else ["—"],
-        key="driver1", label_visibility="collapsed"
+
+def build_prediction_df(drv_df, cst_df, grid, use_grid, round_num) -> pd.DataFrame:
+    if drv_df.empty:
+        return pd.DataFrame()
+    rows = []
+    for _, drv in drv_df.iterrows():
+        did = drv["driverId"]
+        cst = cst_df[cst_df["constructorId"] == drv["constructorId"]]
+        c_pts  = float(cst.iloc[0]["constructorPoints"])           if not cst.empty else 0.0
+        c_pos  = float(cst.iloc[0]["constructorStandingPosition"]) if not cst.empty else 10.0
+        c_wins = float(cst.iloc[0]["constructorWins"])             if not cst.empty else 0.0
+        row = {
+            "driverId": did, "driverName": drv["driverName"],
+            "constructorName": drv["constructorName"],
+            "driverPoints": float(drv["driverPoints"]) if round_num > 1 else 0.0,
+            "driverStandingPosition": float(drv["driverStandingPosition"]) if round_num > 1 else 20.0,
+            "driverWins": float(drv["driverWins"]) if round_num > 1 else 0.0,
+            "constructorPoints": c_pts if round_num > 1 else 0.0,
+            "constructorStandingPosition": c_pos if round_num > 1 else 10.0,
+            "constructorWins": c_wins if round_num > 1 else 0.0,
+        }
+        if use_grid:
+            row["grid"] = grid.get(did, 20)
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def run_prediction(df_features, bundle, use_grid) -> pd.DataFrame:
+    feat_cols = FEATURE_COLS_GRID if use_grid else FEATURE_COLS_NO_GRID
+    X_sc = bundle["scaler"].transform(df_features[feat_cols].values)
+    proba_rf  = bundle["rf"].predict_proba(X_sc)[:, 1]
+    proba_dt  = bundle["dt"].predict_proba(X_sc)[:, 1]
+    proba_avg = (proba_rf + proba_dt) / 2
+    df = df_features[["driverName", "constructorName"]].copy()
+    df["proba_rf"] = proba_rf
+    df["proba_dt"] = proba_dt
+    df["proba_avg"] = proba_avg
+    if use_grid:
+        df["grid"] = df_features["grid"].values
+    df["position"] = df["proba_avg"].rank(ascending=False, method="first").astype(int)
+    return df.sort_values("position").reset_index(drop=True)
+
+
+def render_pred_card(row, rank, color) -> str:
+    medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+    pct = f"{row['proba_avg']*100:.1f}%"
+    grid_txt = f" · Grille P{int(row['grid'])}" if "grid" in row else ""
+    return f"""<div style="background:#13131a;border-left:4px solid {color};border-radius:8px;padding:1rem 1.2rem;margin-bottom:0.6rem;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:1.5rem;color:{color};">{medals.get(rank,f"#{rank}")} {row['driverName'].upper()}</div>
+        <div style="font-size:0.75rem;color:#666;text-transform:uppercase;margin-top:0.2rem;">{row['constructorName']}{grid_txt}</div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.8rem;font-weight:700;color:#fff;margin-top:0.4rem;">{pct} <span style="font-size:0.8rem;color:#555;font-weight:400">prob. podium</span></div>
+    </div>"""
+
+
+def render_full_ranking(df, top_highlight, color) -> str:
+    html = ""
+    for _, row in df.iterrows():
+        pos   = int(row["position"])
+        is_hl = pos <= top_highlight
+        bg    = "#1a1a24" if is_hl else "#0f0f16"
+        left  = color    if is_hl else "#2a2a3a"
+        pct   = f"{row['proba_avg']*100:.1f}%"
+        bar_w = int(row["proba_avg"] * 120)
+        g_txt = f"P{int(row['grid'])}" if "grid" in row else ""
+        html += f"""<div style="display:flex;align-items:center;gap:0.8rem;background:{bg};border-left:3px solid {left};border-radius:4px;padding:0.5rem 0.8rem;margin-bottom:0.3rem;">
+            <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:1.1rem;color:{'#fff' if is_hl else '#666'};min-width:2rem;text-align:right;">{pos}</div>
+            <div style="flex:1;"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:0.95rem;color:{'#fff' if is_hl else '#aaa'};">{row['driverName']}</div>
+            <div style="font-size:0.7rem;color:#555;text-transform:uppercase;">{row['constructorName']} {"· Grille "+g_txt if g_txt else ""}</div></div>
+            <div style="text-align:right;min-width:3.5rem;"><div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:1rem;color:{color if is_hl else '#555'};">{pct}</div>
+            <div style="background:#1e1e2e;border-radius:2px;height:3px;margin-top:2px;"><div style="background:{color if is_hl else '#333'};width:{bar_w}px;max-width:100%;height:3px;border-radius:2px;"></div></div></div>
+        </div>"""
+    return html
+
+
+# ─── LAYOUT ───────────────────────────────────────────────────────────────────
+
+st.markdown('<div class="f1-header">F1 App</div>', unsafe_allow_html=True)
+st.markdown('<div class="f1-sub">Résultats · Télémétrie · Prédictions</div>', unsafe_allow_html=True)
+
+tab_race, tab_pred = st.tabs(["🏎️  Course & Télémétrie", "🔮  Prédictions"])
+
+
+# ─── ONGLET 1 — COURSE & TÉLÉMÉTRIE ──────────────────────────────────────────
+
+with tab_race:
+
+    with st.sidebar:
+        st.markdown("""<div style='font-family:Barlow Condensed,sans-serif;font-weight:900;font-size:1.5rem;color:#e8002d;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:1.5rem;'>⬡ Course</div>""", unsafe_allow_html=True)
+        st.markdown('<p style="font-size:0.8rem;color:#aaa;text-transform:uppercase;letter-spacing:0.1em;">Saison</p>', unsafe_allow_html=True)
+        sel_year = st.selectbox("Saison", YEARS, label_visibility="collapsed", format_func=lambda y: f"Saison {y}", key="race_year")
+        st.markdown('<p style="font-size:0.8rem;color:#aaa;text-transform:uppercase;letter-spacing:0.1em;">Grand Prix</p>', unsafe_allow_html=True)
+        sel_circuit = st.selectbox("Circuit", CIRCUITS, label_visibility="collapsed", key="race_circuit")
+        st.markdown("<br>", unsafe_allow_html=True)
+        load_btn = st.button("🏁  Charger la course", use_container_width=True, key="load_btn")
+        st.markdown("""<div style='margin-top:2rem;padding-top:1rem;border-top:1px solid #1e1e2e;font-size:0.7rem;color:#444;line-height:1.6;'>Données : FastF1 · Jolpica API<br>Cache : {_CACHE_DIR}</div>""", unsafe_allow_html=True)
+
+    if not load_btn and "session_loaded" not in st.session_state:
+        st.markdown("""<div style='text-align:center;padding:5rem 2rem;font-family:Barlow Condensed,sans-serif;'><div style='font-size:5rem;margin-bottom:1rem;'>🏎️</div><div style='font-size:1.2rem;letter-spacing:0.15em;text-transform:uppercase;color:#444;'>Sélectionnez une saison et un Grand Prix<br>puis cliquez sur Charger</div></div>""", unsafe_allow_html=True)
+        st.stop()
+
+    if load_btn:
+        st.session_state["session_loaded"] = True
+        st.session_state["active_year"]    = sel_year
+        st.session_state["active_circuit"] = sel_circuit
+
+    year    = st.session_state.get("active_year", sel_year)
+    circuit = st.session_state.get("active_circuit", sel_circuit)
+
+    # Vérifie si la session est déjà en cache
+    _cache_key = f"{year}_{circuit}"
+    _already_cached = st.session_state.get("cached_session_key") == _cache_key
+
+    if not _already_cached:
+        st.markdown(f"""
+        <div style="background:#13131a; border-left:4px solid #e8002d; border-radius:8px;
+                    padding:1.5rem 2rem; margin-bottom:1.5rem;">
+            <div style="font-family:'Barlow Condensed',sans-serif; font-weight:900;
+                        font-size:1.4rem; color:#e8002d; letter-spacing:0.05em;
+                        text-transform:uppercase;">
+                ⏳ Téléchargement des données en cours
+            </div>
+            <div style="font-size:0.9rem; color:#aaa; margin-top:0.5rem; line-height:1.6;">
+                Récupération de la télémétrie de <b>{circuit} {year}</b> depuis les serveurs F1.<br>
+                Cette opération peut prendre <b>30 à 60 secondes</b> lors du premier chargement.<br>
+                <span style="color:#666; font-size:0.8rem;">
+                    Les prochains chargements de cette course seront instantanés (cache actif).
+                </span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with st.spinner("Téléchargement des données, merci de patienter…"):
+        session = load_session(year, circuit)
+
+    if session is not None:
+        st.session_state["cached_session_key"] = _cache_key
+
+    if session is None:
+        st.error("Session indisponible. Essayez une autre course.")
+        st.stop()
+
+    # Résultats
+    results_df = get_race_results(year, circuit)
+
+    if not results_df.empty:
+        # Podium
+        st.markdown('<div class="section-title">🏆 Podium</div>', unsafe_allow_html=True)
+        podium_colors = ["#FFD700", "#C0C0C0", "#CD7F32"]
+        pcols = st.columns(3)
+        for i in range(min(3, len(results_df))):
+            row = results_df.iloc[i]
+            try:
+                color = fastf1.plotting.get_driver_color(row["Abbreviation"], session)
+            except Exception:
+                color = podium_colors[i]
+            lt = format_laptime(row["FastestLapTime"]) if "FastestLapTime" in row and pd.notna(row["FastestLapTime"]) else "N/A"
+            fastest_icon = " ⚡" if "FastestLapRank" in row and row["FastestLapRank"] == 1 else ""
+            medals = ["🥇", "🥈", "🥉"]
+            with pcols[i]:
+                st.markdown(f"""<div class="podium-card" style="--color:{color}">
+                    <div style="font-size:1.8rem">{medals[i]}</div>
+                    <div class="podium-name">{row['Abbreviation']}</div>
+                    <div class="podium-meta">{row['FullName']} · {row['TeamName']}</div>
+                    <div class="podium-time">Meilleur tour : {lt}{fastest_icon}</div>
+                </div>""", unsafe_allow_html=True)
+
+        # Tableau
+        st.markdown('<div class="section-title">📋 Résultats complets</div>', unsafe_allow_html=True)
+        disp = results_df[["Position", "Abbreviation", "FullName", "TeamName", "GridPosition", "Status", "Points"]].copy()
+        if "FastestLapTime" in results_df.columns:
+            disp["FastestLapTime"] = results_df["FastestLapTime"].apply(lambda x: format_laptime(x) if pd.notna(x) else "—")
+        disp.columns = ["Pos", "Abrév.", "Pilote", "Écurie", "Grille", "Statut", "Pts"] + (["Meilleur Tour"] if "FastestLapTime" in results_df.columns else [])
+        for c in ["Pos", "Grille"]:
+            disp[c] = disp[c].fillna("—").apply(lambda x: str(int(float(x))) if x != "—" else "—")
+        st.dataframe(disp, use_container_width=True, hide_index=True)
+
+    # Télémétrie
+    st.markdown('<div class="section-title">📈 Télémétrie — Meilleur tour par pilote</div>', unsafe_allow_html=True)
+
+    all_drivers = sorted(session.laps["Driver"].unique().tolist())
+
+    selected_drivers = st.multiselect(
+        "Pilotes affichés",
+        options=all_drivers,
+        default=all_drivers,
+        key="telem_drivers",
     )
-    if not drivers1:
-        st.caption("⚠️ Session non disponible")
 
-    lap_mode1 = st.radio(
-        "Tour P1", ["Meilleur tour", "Tour spécifique"],
-        key="lap_mode1", horizontal=True, label_visibility="collapsed"
-    )
-    lap_number1 = 0
-    if lap_mode1 == "Tour spécifique" and drivers1:
-        laps1 = get_driver_lap_numbers(year1, circuit, driver1)
-        if laps1:
-            lap_number1 = st.selectbox(
-                "N° tour P1", laps1, key="lap_num1",
-                label_visibility="collapsed",
-                format_func=lambda n: f"Tour {n}",
-            )
+    if selected_drivers:
+        telem_data = {}
+        prog = st.progress(0, text="Chargement télémétrie…")
+        for i, drv in enumerate(selected_drivers):
+            data = get_fastest_lap_telemetry(year, circuit, drv)
+            if data is not None:
+                telem_data[drv] = data
+            prog.progress((i + 1) / len(selected_drivers),
+                          text=f"Chargement {drv}… ({i+1}/{len(selected_drivers)})")
+        prog.empty()
+
+        if telem_data:
+            for fig in make_telemetry_charts(telem_data):
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
         else:
-            st.caption("⚠️ Tours non disponibles")
+            st.warning("Aucune télémétrie disponible.")
+    else:
+        st.info("Sélectionnez au moins un pilote.")
 
-    st.markdown('<p class="section-title">Pilote 2</p>', unsafe_allow_html=True)
-    year2 = st.selectbox("Année 2", YEARS, key="year2", label_visibility="collapsed",
-                         format_func=lambda y: f"Saison {y}",
-                         index=min(1, len(YEARS)-1))
+    # Carte circuit
+    st.markdown('<div class="section-title">🗺️ Carte du circuit — Delta vitesse</div>', unsafe_allow_html=True)
+    mc1, mc2 = st.columns(2)
+    with mc1:
+        map_d1 = st.selectbox("Pilote 1 (carte)", all_drivers, key="map_d1", index=0)
+    with mc2:
+        map_d2 = st.selectbox("Pilote 2 (carte)", all_drivers, key="map_d2",
+                              index=min(1, len(all_drivers) - 1))
 
-    drivers2 = get_session_drivers(year2, circuit)
-    driver2 = st.selectbox(
-        "Pilote 2", drivers2 if drivers2 else ["—"],
-        key="driver2", label_visibility="collapsed",
-        index=min(1, len(drivers2)-1) if len(drivers2) > 1 else 0,
-    )
-    if not drivers2:
-        st.caption("⚠️ Session non disponible")
-
-    lap_mode2 = st.radio(
-        "Tour P2", ["Meilleur tour", "Tour spécifique"],
-        key="lap_mode2", horizontal=True, label_visibility="collapsed"
-    )
-    lap_number2 = 0
-    if lap_mode2 == "Tour spécifique" and drivers2:
-        laps2 = get_driver_lap_numbers(year2, circuit, driver2)
-        if laps2:
-            lap_number2 = st.selectbox(
-                "N° tour P2", laps2, key="lap_num2",
-                label_visibility="collapsed",
-                format_func=lambda n: f"Tour {n}",
-            )
+    if map_d1 != map_d2:
+        with st.spinner("Génération de la carte…"):
+            md1 = get_fastest_lap_telemetry(year, circuit, map_d1)
+            md2 = get_fastest_lap_telemetry(year, circuit, map_d2)
+        if md1 and md2 and "X" in md1["telemetry"].columns:
+            fig_map = make_track_map_comparison(md1, md2, map_d1, map_d2)
+            if fig_map:
+                st.plotly_chart(fig_map, use_container_width=True, config={"displayModeBar": False})
         else:
-            st.caption("⚠️ Tours non disponibles")
+            st.info("Données GPS indisponibles pour cette course.")
+    else:
+        st.info("Sélectionnez deux pilotes différents pour la carte.")
+
+
+# ─── ONGLET 2 — PRÉDICTIONS ───────────────────────────────────────────────────
+
+with tab_pred:
+
+    st.markdown('<div class="section-title">Paramètres de la course</div>', unsafe_allow_html=True)
+    pc1, pc2, pc3 = st.columns(3)
+    with pc1:
+        pred_year = st.selectbox("Saison", YEARS, key="pred_year", format_func=lambda y: f"Saison {y}")
+    with pc2:
+        pred_circuit_name = st.selectbox("Grand Prix", list(CIRCUITS_PRED.keys()), key="pred_circuit")
+    with pc3:
+        pred_round = st.number_input("Numéro de manche", min_value=1, max_value=24, value=1, step=1, key="pred_round")
+
+    st.markdown('<div class="section-title">Grille de départ</div>', unsafe_allow_html=True)
+    use_grid = st.checkbox("Tenir compte des positions de départ (après qualifications)", key="use_grid", value=False)
+    grid_data = {}
+
+    if use_grid:
+        grid_source = st.radio("Source", ["🌐 Récupérer via Jolpica", "✏️ Saisie manuelle"],
+                               key="grid_source", horizontal=True, label_visibility="collapsed")
+        if grid_source == "🌐 Récupérer via Jolpica":
+            if st.button("Récupérer la grille", key="fetch_grid_btn"):
+                with st.spinner("Récupération qualifications…"):
+                    grid_data = fetch_qualifying_grid(pred_year, pred_round)
+                if grid_data:
+                    st.success(f"✅ {len(grid_data)} pilotes récupérés")
+                    st.session_state["grid_data"] = grid_data
+                else:
+                    st.warning("Qualifications pas encore disponibles.")
+            grid_data = st.session_state.get("grid_data", {})
+        else:
+            with st.spinner("Récupération pilotes…"):
+                drv_df_m, _ = fetch_standings(pred_year, pred_round)
+            if not drv_df_m.empty:
+                cols_g = st.columns(4)
+                for i, (_, dr) in enumerate(drv_df_m.iterrows()):
+                    with cols_g[i % 4]:
+                        pos = st.number_input(dr["driverName"], min_value=0, max_value=20,
+                                              value=0, step=1, key=f"gm_{dr['driverId']}")
+                        if pos > 0:
+                            grid_data[dr["driverId"]] = pos
 
     st.markdown("<br>", unsafe_allow_html=True)
-    compare_btn = st.button("🏁  Comparer", use_container_width=True)
+    predict_btn = st.button("🔮  Prédire", use_container_width=True, key="predict_btn")
 
-    st.markdown("""
-    <div style='margin-top: 2rem; padding-top: 1rem;
-                border-top: 1px solid #1e1e2e;
-                font-size: 0.7rem; color: #444;
-                line-height: 1.6;'>
-        Données : FastF1 + Ergast API<br>
-        Meilleur tour ou tour au choix<br>
-        Cache local activé
-    </div>
-    """, unsafe_allow_html=True)
+    if not predict_btn:
+        st.markdown("""<div style='text-align:center;padding:4rem 2rem;font-family:Barlow Condensed,sans-serif;'><div style='font-size:4rem;margin-bottom:1rem;'>🔮</div><div style='font-size:1.1rem;letter-spacing:0.15em;text-transform:uppercase;color:#444;'>Configurez la course et cliquez sur Prédire</div></div>""", unsafe_allow_html=True)
+    else:
+        bundle = load_prediction_model(with_grid=use_grid)
+        if bundle is None:
+            st.error("❌ Modèle introuvable. Vérifiez que les fichiers .joblib sont dans models/")
+            st.stop()
 
+        with st.spinner("Récupération standings…"):
+            drv_df, cst_df = fetch_standings(pred_year, pred_round)
 
-# ── Main ───────────────────────────────────────────────────────────────────────
+        df_feat = build_prediction_df(drv_df, cst_df, grid_data, use_grid, pred_round)
+        if df_feat.empty:
+            st.error("Données indisponibles pour cette course.")
+            st.stop()
 
-st.markdown('<div class="f1-header">F1 Telemetry</div>', unsafe_allow_html=True)
-st.markdown('<div class="f1-sub">Comparateur de télémétrie · Meilleur tour ou tour spécifique</div>',
-            unsafe_allow_html=True)
+        df_pred_result = run_prediction(df_feat, bundle, use_grid)
+        grid_note = " (avec grille)" if use_grid else " (sans grille)"
+        st.markdown(f"""<div style='font-family:Barlow Condensed;font-size:0.8rem;letter-spacing:0.15em;text-transform:uppercase;color:#666;margin-bottom:1.5rem;'>{pred_circuit_name} · {pred_year} · Manche {pred_round}{grid_note}</div>""", unsafe_allow_html=True)
 
-if not compare_btn:
-    # État initial
-    st.markdown("""
-    <div style='text-align: center; padding: 5rem 2rem;
-                color: #333; font-family: Barlow Condensed, sans-serif;'>
-        <div style='font-size: 5rem; margin-bottom: 1rem;'>🏎️</div>
-        <div style='font-size: 1.2rem; letter-spacing: 0.15em;
-                    text-transform: uppercase; color: #444;'>
-            Sélectionnez un circuit, deux pilotes<br>et cliquez sur Comparer
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    st.stop()
+        for top_n, title, color in [(1, "Vainqueur prédit", "#e8002d"),
+                                     (3, "Podium prédit", "#ff6b35"),
+                                     (6, "Top 6 prédit", "#00d2ff")]:
+            st.markdown(f'<div class="section-title">{title}</div>', unsafe_allow_html=True)
+            top_df = df_pred_result[df_pred_result["position"] <= top_n]
+            cols_t = st.columns(min(top_n, 3))
+            for i, (_, row) in enumerate(top_df.iterrows()):
+                with cols_t[i % len(cols_t)]:
+                    st.markdown(render_pred_card(row, int(row["position"]), color), unsafe_allow_html=True)
 
-# ── Chargement des données ─────────────────────────────────────────────────────
+        st.markdown('<div class="section-title">Classement complet</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="max-width:600px;">{render_full_ranking(df_pred_result, 6, "#e8002d")}</div>', unsafe_allow_html=True)
 
-col_load1, col_load2 = st.columns(2)
-
-with col_load1:
-    _mode1 = "fastest" if lap_mode1 == "Meilleur tour" else "specific"
-    with st.spinner(f"Chargement {driver1} {year1}…"):
-        data1 = load_lap_telemetry(year1, circuit, driver1, _mode1, lap_number1)
-
-with col_load2:
-    _mode2 = "fastest" if lap_mode2 == "Meilleur tour" else "specific"
-    with st.spinner(f"Chargement {driver2} {year2}…"):
-        data2 = load_lap_telemetry(year2, circuit, driver2, _mode2, lap_number2)
-
-if data1 is None or data2 is None:
-    st.error("Impossible de charger les données. Vérifiez votre connexion ou essayez une autre combinaison.")
-    st.stop()
-
-# ── Cards pilotes ──────────────────────────────────────────────────────────────
-
-c1_hex = data1["color"] or DRIVER_COLORS["default_1"]
-c2_hex = data2["color"] or DRIVER_COLORS["default_2"]
-lt1 = format_laptime(data1["lap_time"])
-lt2 = format_laptime(data2["lap_time"])
-# Ajoute l'année au nom si les deux pilotes sont identiques
-same_driver = (driver1 == driver2)
-label1 = f"{driver1} {year1}" if same_driver else driver1
-label2 = f"{driver2} {year2}" if same_driver else driver2
-
-col1, col2 = st.columns(2)
-with col1:
-    st.markdown(f"""
-    <div class="driver-card" style="--color: {c1_hex}">
-        <div class="driver-name">{label1}</div>
-        <div class="driver-meta">{circuit} · {year1} · {data1['lap_label']} (T{data1['lap_number']})</div>
-        <div style="font-family: 'Barlow Condensed'; font-size: 2rem;
-                    font-weight: 700; color: {c1_hex}; margin-top: 0.5rem;">
-            {lt1}
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with col2:
-    st.markdown(f"""
-    <div class="driver-card" style="--color: {c2_hex}">
-        <div class="driver-name">{label2}</div>
-        <div class="driver-meta">{circuit} · {year2} · {data2['lap_label']} (T{data2['lap_number']})</div>
-        <div style="font-family: 'Barlow Condensed'; font-size: 2rem;
-                    font-weight: 700; color: {c2_hex}; margin-top: 0.5rem;">
-            {lt2}
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-# ── Stats résumé ───────────────────────────────────────────────────────────────
-
-t1 = data1["telemetry"]
-t2 = data2["telemetry"]
-
-vmax1 = t1["Speed"].max() if "Speed" in t1 else None
-vmax2 = t2["Speed"].max() if "Speed" in t2 else None
-vmoy1 = t1["Speed"].mean() if "Speed" in t1 else None
-vmoy2 = t2["Speed"].mean() if "Speed" in t2 else None
-thr1  = (t1["Throttle"] > 95).mean() * 100 if "Throttle" in t1 else None
-thr2  = (t2["Throttle"] > 95).mean() * 100 if "Throttle" in t2 else None
-# Brake est un booléen dans FastF1 (True/False) → on utilise directement .mean()
-brk1  = t1["Brake"].mean() * 100 if "Brake" in t1 else None
-brk2  = t2["Brake"].mean() * 100 if "Brake" in t2 else None
-
-st.markdown('<div class="section-title">Statistiques du tour</div>', unsafe_allow_html=True)
-
-cols = st.columns(4)
-stats = [
-    ("Vmax", vmax1, vmax2, "km/h", True),
-    ("Vitesse moy.", vmoy1, vmoy2, "km/h", True),
-    ("Plein gaz", thr1, thr2, "%", True),
-    ("Freinage", brk1, brk2, "%", False),
-]
-for col, (label, v1, v2, unit, higher_better) in zip(cols, stats):
-    with col:
-        if v1 is not None and v2 is not None:
-            diff = v1 - v2
-            sign = "+" if diff > 0 else ""
-            better = (diff > 0) == higher_better
-            delta_color = c1_hex if better else c2_hex
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-label">{label}</div>
-                <div class="metric-value">{v1:.0f}<span style='font-size:0.9rem;color:#666'> {unit}</span></div>
-                <div class="metric-delta" style="color:{delta_color}">
-                    {sign}{diff:.1f} {unit} vs {label2}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-# ── Graphiques télémétrie ──────────────────────────────────────────────────────
-
-st.markdown('<div class="section-title">Télémétrie comparée</div>', unsafe_allow_html=True)
-fig_tel = make_telemetry_figure(data1, data2)
-st.plotly_chart(fig_tel, use_container_width=True, config={"displayModeBar": False})
-
-# ── Delta vitesse ──────────────────────────────────────────────────────────────
-
-st.markdown('<div class="section-title">Delta de vitesse</div>', unsafe_allow_html=True)
-fig_delta = make_delta_figure(data1, data2)
-st.plotly_chart(fig_delta, use_container_width=True, config={"displayModeBar": False})
-
-# ── Carte circuit ──────────────────────────────────────────────────────────────
-
-if "X" in t1.columns and "Y" in t1.columns:
-    st.markdown('<div class="section-title">Cartes du circuit</div>', unsafe_allow_html=True)
-
-    # Deux cartes individuelles côte à côte
-    map_col1, map_col2 = st.columns(2)
-    with map_col1:
-        fig_map1 = make_track_single(data1, f"{label1} — Vitesse")
-        if fig_map1:
-            st.plotly_chart(fig_map1, use_container_width=True, config={"displayModeBar": False})
-    with map_col2:
-        fig_map2 = make_track_single(data2, f"{label2} — Vitesse")
-        if fig_map2:
-            st.plotly_chart(fig_map2, use_container_width=True, config={"displayModeBar": False})
-
-    # Carte delta pleine largeur
-    fig_map_delta = make_track_delta_map(data1, data2, label1, label2)
-    if fig_map_delta:
-        st.plotly_chart(fig_map_delta, use_container_width=True, config={"displayModeBar": False})
+        st.markdown('<div class="section-title">Probabilités RF vs DT</div>', unsafe_allow_html=True)
+        fig_p = go.Figure()
+        fig_p.add_trace(go.Bar(x=df_pred_result["driverName"], y=df_pred_result["proba_rf"]*100,
+                               name="Random Forest", marker_color="#e8002d", opacity=0.85))
+        fig_p.add_trace(go.Bar(x=df_pred_result["driverName"], y=df_pred_result["proba_dt"]*100,
+                               name="Decision Tree", marker_color="#00d2ff", opacity=0.85))
+        fig_p.update_layout(
+            height=320, barmode="group", paper_bgcolor=PLOT_BG, plot_bgcolor=PLOT_BG,
+            font=dict(family="Barlow Condensed", color=FONT_COLOR),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                        font=dict(color="#ccc"), bgcolor="rgba(0,0,0,0)"),
+            margin=dict(l=40, r=20, t=40, b=80),
+            xaxis=dict(tickangle=-45, gridcolor=GRID_COLOR, tickfont=dict(color="#888", size=9)),
+            yaxis=dict(gridcolor=GRID_COLOR, title="P(podium) %", title_font=dict(color="#888", size=10)),
+        )
+        st.plotly_chart(fig_p, use_container_width=True, config={"displayModeBar": False})
