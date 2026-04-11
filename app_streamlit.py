@@ -519,22 +519,22 @@ with tab_race:
 
     map_btn = st.button("🗺️ Afficher la carte", key="map_btn")
 
-map_btn = st.button("🗺️ Afficher la carte", key="map_btn")
 
-if map_btn and map_d1 != map_d2:
-    with st.spinner("Génération de la carte…"):
-        md1 = get_fastest_lap_telemetry(year, circuit, map_d1)
-        md2 = get_fastest_lap_telemetry(year, circuit, map_d2)
-    if md1 and md2 and "X" in md1["telemetry"].columns:
-        fig_map = make_track_map_comparison(md1, md2, map_d1, map_d2)
-        st.session_state["map_fig"] = fig_map
-    else:
-        st.session_state["map_fig"] = None
 
-if "map_fig" in st.session_state and st.session_state["map_fig"] is not None:
-    st.plotly_chart(st.session_state["map_fig"], use_container_width=True, config={"displayModeBar": False})
-elif map_d1 == map_d2:
-    st.info("Sélectionnez deux pilotes différents pour la carte.")
+    if map_btn and map_d1 != map_d2:
+        with st.spinner("Génération de la carte…"):
+            md1 = get_fastest_lap_telemetry(year, circuit, map_d1)
+            md2 = get_fastest_lap_telemetry(year, circuit, map_d2)
+        if md1 and md2 and "X" in md1["telemetry"].columns:
+            fig_map = make_track_map_comparison(md1, md2, map_d1, map_d2)
+            st.session_state["map_fig"] = fig_map
+        else:
+            st.session_state["map_fig"] = None
+    
+    if "map_fig" in st.session_state and st.session_state["map_fig"] is not None:
+        st.plotly_chart(st.session_state["map_fig"], use_container_width=True, config={"displayModeBar": False})
+    elif map_d1 == map_d2:
+        st.info("Sélectionnez deux pilotes différents pour la carte.")
 
 
 
