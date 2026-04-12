@@ -626,10 +626,6 @@ with st.sidebar:
     load_btn = st.button("🏁  Charger la course", use_container_width=True, key="load_btn")
     st.markdown(f"""<div style='margin-top:2rem;padding-top:1rem;border-top:1px solid #1e1e2e;font-size:0.7rem;color:#444;line-height:1.6;'>Données : FastF1 · Jolpica API<br>Cache : {_CACHE_DIR}</div>""", unsafe_allow_html=True)
 
-if not load_btn and "session_loaded" not in st.session_state:
-    st.markdown("""<div style='text-align:center;padding:5rem 2rem;font-family:Barlow Condensed,sans-serif;'><div style='font-size:5rem;margin-bottom:1rem;'>🏎️</div><div style='font-size:1.2rem;letter-spacing:0.15em;text-transform:uppercase;color:#444;'>Sélectionnez une saison et un Grand Prix<br>puis cliquez sur Charger</div></div>""", unsafe_allow_html=True)
-    st.stop()
-
 if load_btn:
     st.session_state["session_loaded"] = True
     st.session_state["active_year"]    = sel_year
@@ -638,38 +634,42 @@ if load_btn:
 year    = st.session_state.get("active_year", sel_year)
 circuit = st.session_state.get("active_circuit", sel_circuit)
 
-# Vérifie si la session est déjà en cache
-_cache_key = f"{year}_{circuit}"
-_already_cached = st.session_state.get("cached_session_key") == _cache_key
 
-if not _already_cached:
-    st.markdown(f"""
-    <div style="background:#13131a; border-left:4px solid #e8002d; border-radius:8px;
-                padding:1.5rem 2rem; margin-bottom:1.5rem;">
-        <div style="font-family:'Barlow Condensed',sans-serif; font-weight:900;
-                    font-size:1.4rem; color:#e8002d; letter-spacing:0.05em;
-                    text-transform:uppercase;">
-            ⏳ Téléchargement des données en cours
-        </div>
-        <div style="font-size:0.9rem; color:#aaa; margin-top:0.5rem; line-height:1.6;">
-            Récupération de la télémétrie de <b>{circuit} {year}</b> depuis les serveurs F1.<br>
-            Cette opération peut prendre <b>30 à 60 secondes</b> lors du premier chargement.<br>
-            <span style="color:#666; font-size:0.8rem;">
-                Les prochains chargements de cette course seront instantanés (cache actif).
-            </span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+def _load_session_for_tab():
+    """Charge la session dans les onglets qui en ont besoin (2, 3, 4)."""
+    if "session_loaded" not in st.session_state:
+        st.markdown("""<div style='text-align:center;padding:4rem 2rem;
+            font-family:Barlow Condensed,sans-serif;'>
+            <div style='font-size:4rem;margin-bottom:1rem;'>🏎️</div>
+            <div style='font-size:1.1rem;letter-spacing:0.15em;
+                text-transform:uppercase;color:#444;'>
+                Sélectionnez une saison et un Grand Prix<br>puis cliquez sur Charger
+            </div></div>""", unsafe_allow_html=True)
+        return None
 
-with st.spinner("Téléchargement des données, merci de patienter…"):
-    session = load_session(year, circuit)
+    _cache_key = f"{year}_{circuit}"
+    _already_cached = st.session_state.get("cached_session_key") == _cache_key
+    if not _already_cached:
+        st.markdown(f"""
+        <div style="background:#13131a;border-left:4px solid #e8002d;border-radius:8px;
+                    padding:1.5rem 2rem;margin-bottom:1.5rem;">
+            <div style="font-family:'Barlow Condensed',sans-serif;font-weight:900;
+                        font-size:1.4rem;color:#e8002d;text-transform:uppercase;">
+                ⏳ Téléchargement des données en cours
+            </div>
+            <div style="font-size:0.9rem;color:#aaa;margin-top:0.5rem;line-height:1.6;">
+                Récupération de la télémétrie de <b>{circuit} {year}</b>.<br>
+                Première fois : <b>30 à 60 secondes</b>. Ensuite instantané.
+            </div>
+        </div>""", unsafe_allow_html=True)
 
-if session is not None:
-    st.session_state["cached_session_key"] = _cache_key
-
-if session is None:
-    st.error("Session indisponible. Essayez une autre course.")
-    st.stop()
+    with st.spinner("Téléchargement des données, merci de patienter…"):
+        sess = load_session(year, circuit)
+    if sess is not None:
+        st.session_state["cached_session_key"] = _cache_key
+    else:
+        st.error("Session indisponible. Essayez une autre course.")
+    return sess
 
 
 # ─── ONGLET 1 — RÉSULTATS ────────────────────────────────────────────────────
@@ -805,6 +805,9 @@ with tab1:
 with tab2:
 
     # Résultats
+    session = _load_session_for_tab()
+    if session is None:
+        st.stop()
     results_df = get_race_results(year, circuit)
 
     if not results_df.empty:
@@ -847,6 +850,9 @@ with tab2:
 with tab3:
 
     # Télémétrie
+    session = _load_session_for_tab()
+    if session is None:
+        st.stop()
     st.markdown('<div class="section-title">📈 Télémétrie — Meilleur tour par pilote</div>', unsafe_allow_html=True)
 
     all_drivers = sorted(session.laps["Driver"].unique().tolist())
@@ -885,6 +891,9 @@ with tab3:
 with tab4:
 
     # Carte circuit
+    session = _load_session_for_tab()
+    if session is None:
+        st.stop()
     st.markdown('<div class="section-title">🗺️ Carte du circuit — Delta vitesse</div>', unsafe_allow_html=True)
     mc1, mc2 = st.columns(2)
     with mc1:
