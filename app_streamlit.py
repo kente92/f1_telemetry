@@ -19,6 +19,8 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from imblearn.over_sampling import RandomOverSampler
+from sklearn.svm import SVC
 from pathlib import Path
 from sklearn.preprocessing import StandardScaler
 
@@ -93,10 +95,12 @@ YEARS = list(range(datetime.date.today().year, 2017, -1))
 JOLPICA_BASE = "https://api.jolpi.ca/ergast/f1"
 FEATURE_COLS_GRID    = ["grid", "driverPoints", "driverStandingPosition",
                          "driverWins", "constructorPoints",
-                         "constructorStandingPosition", "constructorWins"]
+                         "constructorStandingPosition", "constructorWins",
+                         "rainfall"]
 FEATURE_COLS_NO_GRID = ["driverPoints", "driverStandingPosition",
                          "driverWins", "constructorPoints",
-                         "constructorStandingPosition", "constructorWins"]
+                         "constructorStandingPosition", "constructorWins",
+                         "rainfall"]
 CIRCUITS_PRED = {
     "Bahrain": "bahrain", "Saudi Arabia": "jeddah", "Australia": "albert_park",
     "Japan": "suzuka", "China": "shanghai", "Miami": "miami",
@@ -134,17 +138,6 @@ def get_race_results(year: int, circuit: str) -> pd.DataFrame:
         available = [c for c in cols if c in session.results.columns]
         results = session.results[available].copy()
         results = results.sort_values("Position")
-        # Récupère le meilleur tour depuis les laps si manquant
-        try:
-            for idx, row in results.iterrows():
-                if pd.isna(row.get("FastestLapTime")):
-                    laps = session.laps.pick_driver(row["Abbreviation"])
-                    if not laps.empty:
-                        fastest = laps.pick_fastest()
-                        if fastest is not None:
-                            results.at[idx, "FastestLapTime"] = fastest["LapTime"]
-        except Exception:
-            pass
         return results
     except Exception:
         return pd.DataFrame()
@@ -212,6 +205,78 @@ def make_telemetry_charts(telem_data: dict) -> list:
     return figures
 
 
+def make_lap_by_lap_chart(session, driver1: str, driver2: str) -> go.Figure:
+    """
+    Comparaison des temps au tour (LapTime en secondes) tout au long de la course.
+    Met en évidence les arrêts aux stands.
+    """
+    laps = session.laps
+    d1_laps = laps.pick_driver(driver1)[["LapNumber", "LapTime", "PitOutTime"]].copy()
+    d2_laps = laps.pick_driver(driver2)[["LapNumber", "LapTime", "PitOutTime"]].copy()
+
+    # Convertit LapTime en secondes
+    d1_laps["LapTime_s"] = d1_laps["LapTime"].dt.total_seconds()
+    d2_laps["LapTime_s"] = d2_laps["LapTime"].dt.total_seconds()
+
+    # Couleurs équipes
+    try:
+        c1 = fastf1.plotting.get_driver_color(driver1, session)
+    except Exception:
+        c1 = "#e8002d"
+    try:
+        c2 = fastf1.plotting.get_driver_color(driver2, session)
+    except Exception:
+        c2 = "#00d2ff"
+
+    fig = go.Figure()
+
+    # Lignes de temps au tour
+    fig.add_trace(go.Scatter(
+        x=d1_laps["LapNumber"], y=d1_laps["LapTime_s"],
+        name=driver1, line=dict(color=c1, width=2),
+        hovertemplate=f"<b>{driver1}</b> — Tour %{{x}}<br>Chrono: %{{y:.3f}}s<extra></extra>",
+    ))
+    fig.add_trace(go.Scatter(
+        x=d2_laps["LapNumber"], y=d2_laps["LapTime_s"],
+        name=driver2, line=dict(color=c2, width=2, dash="dot"),
+        hovertemplate=f"<b>{driver2}</b> — Tour %{{x}}<br>Chrono: %{{y:.3f}}s<extra></extra>",
+    ))
+
+    # Marqueurs arrêts aux stands (tours avec PitOutTime non nul)
+    pit1 = d1_laps[d1_laps["PitOutTime"].notna()]
+    pit2 = d2_laps[d2_laps["PitOutTime"].notna()]
+    if not pit1.empty:
+        fig.add_trace(go.Scatter(
+            x=pit1["LapNumber"], y=pit1["LapTime_s"],
+            mode="markers", name=f"{driver1} — Arrêt",
+            marker=dict(color=c1, size=10, symbol="triangle-up", line=dict(color="white", width=1)),
+            hovertemplate=f"<b>{driver1}</b> — Arrêt T%{{x}}<extra></extra>",
+        ))
+    if not pit2.empty:
+        fig.add_trace(go.Scatter(
+            x=pit2["LapNumber"], y=pit2["LapTime_s"],
+            mode="markers", name=f"{driver2} — Arrêt",
+            marker=dict(color=c2, size=10, symbol="triangle-up", line=dict(color="white", width=1)),
+            hovertemplate=f"<b>{driver2}</b> — Arrêt T%{{x}}<extra></extra>",
+        ))
+
+    fig.update_layout(
+        title=dict(text="CHRONOS TOUR PAR TOUR",
+                   font=dict(family="Barlow Condensed", size=12, color="#e8002d")),
+        height=340, paper_bgcolor=PLOT_BG, plot_bgcolor=PLOT_BG,
+        font=dict(family="Barlow Condensed", color=FONT_COLOR),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                    font=dict(size=11, color="#ccc"), bgcolor="rgba(0,0,0,0)"),
+        margin=dict(l=60, r=30, t=40, b=40),
+        hovermode="x unified",
+        xaxis=dict(gridcolor=GRID_COLOR, zeroline=False, title="Tour",
+                   title_font=dict(color="#888", size=10), tickfont=dict(color=FONT_COLOR)),
+        yaxis=dict(gridcolor=GRID_COLOR, zeroline=False, title="Temps (s)",
+                   title_font=dict(color="#888", size=10), tickfont=dict(color=FONT_COLOR)),
+    )
+    return fig
+
+
 def make_track_map_comparison(data1: dict, data2: dict, label1: str, label2: str):
     t1 = data1["telemetry"]
     t2 = data2["telemetry"]
@@ -261,6 +326,52 @@ def make_track_map_comparison(data1: dict, data2: dict, label1: str, label2: str
 
 
 # ─── PRÉDICTION — fonctions ───────────────────────────────────────────────────
+
+@st.cache_data(show_spinner=False)
+def load_circuits_races_df() -> pd.DataFrame:
+    """
+    Charge circuits + races depuis Jolpica pour la dataviz mondiale.
+    Retourne un DataFrame avec lat/lng/name/year/date.
+    """
+    try:
+        rows = []
+        # Circuits
+        r = requests.get(f"{JOLPICA_BASE}/circuits.json?limit=100", timeout=10)
+        circuits_raw = r.json()["MRData"]["CircuitTable"]["Circuits"]
+        circ_map = {c["circuitId"]: {
+            "name_circuit": c["circuitName"],
+            "lat": float(c["Location"]["lat"]),
+            "lng": float(c["Location"]["long"]),
+            "country": c["Location"]["country"],
+            "location": c["Location"]["locality"],
+        } for c in circuits_raw}
+
+        # Races — on pagine par décennie pour rester léger
+        for decade_start in range(1950, 2030, 10):
+            for yr in range(decade_start, min(decade_start + 10, datetime.date.today().year + 1)):
+                try:
+                    r2 = requests.get(f"{JOLPICA_BASE}/{yr}/races.json?limit=30", timeout=8)
+                    races_raw = r2.json()["MRData"]["RaceTable"]["Races"]
+                    for race in races_raw:
+                        cid = race["Circuit"]["circuitId"]
+                        ci  = circ_map.get(cid, {})
+                        rows.append({
+                            "year":         int(race["season"]),
+                            "round":        int(race["round"]),
+                            "race_name":    race["raceName"],
+                            "date":         race["date"],
+                            "name_circuit": ci.get("name_circuit", cid),
+                            "lat":          ci.get("lat", 0.0),
+                            "lng":          ci.get("lng", 0.0),
+                            "country":      ci.get("country", ""),
+                            "location":     ci.get("location", ""),
+                        })
+                except Exception:
+                    pass
+        return pd.DataFrame(rows)
+    except Exception as e:
+        return pd.DataFrame()
+
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_standings(year: int, round_num: int):
@@ -313,6 +424,60 @@ def fetch_qualifying_grid(year: int, round_num: int) -> dict:
         return {}
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_weather_forecast(circuit_name: str) -> float:
+    """
+    Récupère la probabilité de pluie (0.0 ou 1.0) via Open-Meteo.
+    Utilise les coordonnées du circuit stockées dans CIRCUIT_COORDS.
+    Retourne 0.0 (sec) si pas de données.
+    """
+    coords = CIRCUIT_COORDS.get(circuit_name)
+    if not coords:
+        return 0.0
+    try:
+        lat, lon = coords
+        r = requests.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params={"latitude": lat, "longitude": lon,
+                    "daily": "precipitation_probability_max",
+                    "forecast_days": 3, "timezone": "auto"},
+            timeout=8,
+        )
+        data = r.json()
+        proba = data["daily"]["precipitation_probability_max"][0]
+        return 1.0 if proba >= 50 else 0.0
+    except Exception:
+        return 0.0
+
+
+CIRCUIT_COORDS = {
+    "Bahrain":        (26.0325, 50.5106),
+    "Saudi Arabia":   (21.6319, 39.1044),
+    "Australia":      (-37.8497, 144.968),
+    "Japan":          (34.8431, 136.541),
+    "China":          (31.3389, 121.220),
+    "Miami":          (25.9581, -80.2389),
+    "Emilia Romagna": (44.3439, 11.7167),
+    "Monaco":         (43.7347, 7.42056),
+    "Canada":         (45.5000, -73.5228),
+    "Spain":          (41.5700, 2.26111),
+    "Austria":        (47.2197, 14.7647),
+    "Great Britain":  (52.0786, -1.01694),
+    "Hungary":        (47.5789, 19.2486),
+    "Belgium":        (50.4372, 5.97139),
+    "Netherlands":    (52.3888, 4.54092),
+    "Italy":          (45.6156, 9.28111),
+    "Azerbaijan":     (40.3725, 49.8533),
+    "Singapore":      (1.29139, 103.864),
+    "United States":  (30.1328, -97.6411),
+    "Mexico":         (19.4042, -99.0907),
+    "Brazil":         (-23.7036, -46.6997),
+    "Las Vegas":      (36.1147, -115.173),
+    "Qatar":          (25.4900, 51.4542),
+    "Abu Dhabi":      (24.4672, 54.6031),
+}
+
+
 def build_prediction_df(drv_df, cst_df, grid, use_grid, round_num) -> pd.DataFrame:
     if drv_df.empty:
         return pd.DataFrame()
@@ -341,16 +506,28 @@ def build_prediction_df(drv_df, cst_df, grid, use_grid, round_num) -> pd.DataFra
 
 def run_prediction(df_features, bundle, use_grid) -> pd.DataFrame:
     feat_cols = FEATURE_COLS_GRID if use_grid else FEATURE_COLS_NO_GRID
-    X_sc = bundle["scaler"].transform(df_features[feat_cols].values)
+    # Garde seulement les colonnes disponibles (rainfall peut manquer)
+    available = [f for f in feat_cols if f in df_features.columns]
+    X_sc = bundle["scaler"].transform(df_features[available].values)
     proba_rf  = bundle["rf"].predict_proba(X_sc)[:, 1]
     proba_dt  = bundle["dt"].predict_proba(X_sc)[:, 1]
-    proba_avg = (proba_rf + proba_dt) / 2
+    # SVC si présent dans le bundle
+    if "svc" in bundle and bundle["svc"] is not None:
+        proba_svc = bundle["svc"].predict_proba(X_sc)[:, 1]
+        proba_avg = (proba_rf + proba_dt + proba_svc) / 3
+    else:
+        proba_svc = None
+        proba_avg = (proba_rf + proba_dt) / 2
     df = df_features[["driverName", "constructorName"]].copy()
-    df["proba_rf"] = proba_rf
-    df["proba_dt"] = proba_dt
+    df["proba_rf"]  = proba_rf
+    df["proba_dt"]  = proba_dt
+    if proba_svc is not None:
+        df["proba_svc"] = proba_svc
     df["proba_avg"] = proba_avg
     if use_grid:
         df["grid"] = df_features["grid"].values
+    if "rainfall" in df_features.columns:
+        df["rainfall"] = df_features["rainfall"].values
     df["position"] = df["proba_avg"].rank(ascending=False, method="first").astype(int)
     return df.sort_values("position").reset_index(drop=True)
 
@@ -406,7 +583,7 @@ with tab_race:
         sel_circuit = st.selectbox("Circuit", CIRCUITS, label_visibility="collapsed", key="race_circuit")
         st.markdown("<br>", unsafe_allow_html=True)
         load_btn = st.button("🏁  Charger la course", use_container_width=True, key="load_btn")
-        st.markdown(f"""<div style='margin-top:2rem;padding-top:1rem;border-top:1px solid #1e1e2e;font-size:0.7rem;color:#444;line-height:1.6;'>Données : FastF1 · Jolpica API<br>Cache : {_CACHE_DIR}</div>""", unsafe_allow_html=True)
+        st.markdown("""<div style='margin-top:2rem;padding-top:1rem;border-top:1px solid #1e1e2e;font-size:0.7rem;color:#444;line-height:1.6;'>Données : FastF1 · Jolpica API<br>Cache : {_CACHE_DIR}</div>""", unsafe_allow_html=True)
 
     if not load_btn and "session_loaded" not in st.session_state:
         st.markdown("""<div style='text-align:center;padding:5rem 2rem;font-family:Barlow Condensed,sans-serif;'><div style='font-size:5rem;margin-bottom:1rem;'>🏎️</div><div style='font-size:1.2rem;letter-spacing:0.15em;text-transform:uppercase;color:#444;'>Sélectionnez une saison et un Grand Prix<br>puis cliquez sur Charger</div></div>""", unsafe_allow_html=True)
@@ -488,7 +665,7 @@ with tab_race:
             disp[c] = disp[c].fillna("—").apply(lambda x: str(int(float(x))) if x != "—" else "—")
         st.dataframe(disp, use_container_width=True, hide_index=True)
 
-    # # Télémétrie
+    # Télémétrie
     st.markdown('<div class="section-title">📈 Télémétrie — Meilleur tour par pilote</div>', unsafe_allow_html=True)
 
     all_drivers = sorted(session.laps["Driver"].unique().tolist())
@@ -519,32 +696,167 @@ with tab_race:
     else:
         st.info("Sélectionnez au moins un pilote.")
 
-    # # Carte circuit
-    # st.markdown('<div class="section-title">🗺️ Carte du circuit — Delta vitesse</div>', unsafe_allow_html=True)
-    # mc1, mc2 = st.columns(2)
-    # with mc1:
-    #     map_d1 = st.selectbox("Pilote 1 (carte)", all_drivers, key="map_d1", index=0)
-    # with mc2:
-    #     map_d2 = st.selectbox("Pilote 2 (carte)", all_drivers, key="map_d2",
-    #                           index=min(1, len(all_drivers) - 1))
-    
-    # map_btn = st.button("🗺️ Afficher la carte", key="map_btn")
-    
-    # if map_btn:
-    #     if map_d1 == map_d2:
-    #         st.warning("Sélectionnez deux pilotes différents.")
-    #     else:
-    #         with st.spinner("Génération de la carte…"):
-    #             md1 = get_fastest_lap_telemetry(year, circuit, map_d1)
-    #             md2 = get_fastest_lap_telemetry(year, circuit, map_d2)
-    #         if md1 and md2 and "X" in md1["telemetry"].columns:
-    #             st.session_state["map_fig"] = make_track_map_comparison(md1, md2, map_d1, map_d2)
-    #         else:
-    #             st.session_state["map_fig"] = None
-    #             st.info("Données GPS indisponibles.")
-    
-    # if st.session_state.get("map_fig") is not None:
-    #     st.plotly_chart(st.session_state["map_fig"], use_container_width=True, config={"displayModeBar": False})
+    # Carte circuit
+    st.markdown('<div class="section-title">🗺️ Carte du circuit — Delta vitesse</div>', unsafe_allow_html=True)
+    mc1, mc2 = st.columns(2)
+    with mc1:
+        map_d1 = st.selectbox("Pilote 1 (carte)", all_drivers, key="map_d1", index=0)
+    with mc2:
+        map_d2 = st.selectbox("Pilote 2 (carte)", all_drivers, key="map_d2",
+                              index=min(1, len(all_drivers) - 1))
+
+    if map_d1 != map_d2:
+        with st.spinner("Génération de la carte…"):
+            md1 = get_fastest_lap_telemetry(year, circuit, map_d1)
+            md2 = get_fastest_lap_telemetry(year, circuit, map_d2)
+        if md1 and md2 and "X" in md1["telemetry"].columns:
+            fig_map = make_track_map_comparison(md1, md2, map_d1, map_d2)
+            if fig_map:
+                st.plotly_chart(fig_map, use_container_width=True, config={"displayModeBar": False})
+        else:
+            st.info("Données GPS indisponibles pour cette course.")
+    else:
+        st.info("Sélectionnez deux pilotes différents pour la carte.")
+
+    # ── Chronos tour par tour ──────────────────────────────────────────────
+    st.markdown('<div class="section-title">⏱️ Chronos tour par tour</div>',
+                unsafe_allow_html=True)
+    st.caption("Les triangles ▲ indiquent les tours de sortie des stands.")
+
+    lbl_col1, lbl_col2 = st.columns(2)
+    with lbl_col1:
+        lap_d1 = st.selectbox("Pilote 1 (chronos)", all_drivers, key="lap_d1", index=0)
+    with lbl_col2:
+        lap_d2 = st.selectbox("Pilote 2 (chronos)", all_drivers, key="lap_d2",
+                              index=min(1, len(all_drivers) - 1))
+
+    if lap_d1 != lap_d2:
+        fig_laps = make_lap_by_lap_chart(session, lap_d1, lap_d2)
+        st.plotly_chart(fig_laps, use_container_width=True, config={"displayModeBar": False})
+    else:
+        st.info("Sélectionnez deux pilotes différents.")
+
+    # ── Carte mondiale des circuits ────────────────────────────────────────
+    st.markdown('<div class="section-title">🌍 Carte mondiale des circuits F1</div>',
+                unsafe_allow_html=True)
+
+    with st.spinner("Chargement de l'historique des circuits…"):
+        df_circ = load_circuits_races_df()
+
+    if not df_circ.empty:
+        df_circ["date"] = pd.to_datetime(df_circ["date"], errors="coerce")
+        df_circ["day"]   = df_circ["date"].dt.day
+        df_circ["month"] = df_circ["date"].dt.month
+
+        year_min_circ = int(df_circ["year"].min())
+        year_max_circ = int(df_circ["year"].max())
+
+        map_col_a, map_col_b = st.columns([3, 1])
+        with map_col_a:
+            yr_range = st.slider(
+                "Plage d'années", min_value=year_min_circ, max_value=year_max_circ,
+                value=(year_min_circ, year_max_circ), key="circ_years",
+            )
+        with map_col_b:
+            projection = st.selectbox(
+                "Projection", ["natural earth", "mercator", "orthographic",
+                               "equirectangular", "robinson", "mollweide"],
+                key="circ_proj",
+            )
+
+        df_map = df_circ[(df_circ["year"] >= yr_range[0]) & (df_circ["year"] <= yr_range[1])]
+
+        fig_geo = go.Figure(go.Scattergeo(
+            lat=df_map["lat"], lon=df_map["lng"],
+            text=df_map["race_name"] + " " + df_map["year"].astype(str),
+            customdata=df_map[["country", "location", "year"]].values,
+            hovertemplate=(
+                "<b>%{text}</b><br>"
+                "%{customdata[1]}, %{customdata[0]}<extra></extra>"
+            ),
+            mode="markers",
+            marker=dict(
+                size=5, color=df_map["year"],
+                colorscale=[[0, "#1a0a00"], [0.5, "#e8002d"], [1, "#00d2ff"]],
+                colorbar=dict(title="Année", tickfont=dict(color="#888", size=9),
+                              thickness=10, len=0.6),
+                showscale=True,
+            ),
+        ))
+        fig_geo.update_layout(
+            height=520,
+            paper_bgcolor=PLOT_BG,
+            geo=dict(
+                projection_type=projection,
+                showland=True, landcolor="#1a1a2e",
+                showocean=True, oceancolor="#0a0a0f",
+                showcountries=True, countrycolor="#2a2a3a",
+                showframe=False, bgcolor=PLOT_BG,
+            ),
+            font=dict(family="Barlow Condensed", color=FONT_COLOR),
+            margin=dict(l=0, r=0, t=10, b=0),
+        )
+        st.plotly_chart(fig_geo, use_container_width=True, config={"displayModeBar": False})
+        st.caption(
+            f"**{len(df_map):,}** Grands Prix entre {yr_range[0]} et {yr_range[1]} "
+            f"sur **{df_map['name_circuit'].nunique()}** circuits différents."
+        )
+
+        # ── Course le jour de ton anniversaire ────────────────────────────
+        st.markdown('<div class="section-title">🎂 Course le jour de ton anniversaire</div>',
+                    unsafe_allow_html=True)
+
+        bday = st.date_input(
+            "Ton jour de naissance",
+            value=datetime.date(1990, 6, 15),
+            min_value=datetime.date(1950, 1, 1),
+            max_value=datetime.date.today(),
+            key="bday_input",
+        )
+
+        bday_races = df_circ[
+            (df_circ["day"] == bday.day) & (df_circ["month"] == bday.month)
+        ].sort_values("year")
+
+        if bday_races.empty:
+            st.info(f"Aucune course n'a eu lieu le {bday.day}/{bday.month} dans l'histoire de la F1.")
+        else:
+            st.success(
+                f"**{len(bday_races)}** course(s) ont eu lieu un {bday.day}/{bday.month} "
+                f"entre {int(bday_races['year'].min())} et {int(bday_races['year'].max())} !"
+            )
+
+            # Tableau
+            disp_bday = bday_races[["year", "race_name", "name_circuit", "location", "country", "date"]].copy()
+            disp_bday.columns = ["Année", "Grand Prix", "Circuit", "Ville", "Pays", "Date"]
+            st.dataframe(disp_bday, use_container_width=True, hide_index=True)
+
+            # Carte des courses du jour d'anniversaire
+            fig_bday = go.Figure(go.Scattergeo(
+                lat=bday_races["lat"], lon=bday_races["lng"],
+                text=bday_races["race_name"] + " " + bday_races["year"].astype(str),
+                hovertemplate="<b>%{text}</b><extra></extra>",
+                mode="markers+text",
+                textposition="top center",
+                textfont=dict(color="#e8002d", size=9, family="Barlow Condensed"),
+                marker=dict(size=10, color="#e8002d",
+                            line=dict(color="white", width=1)),
+            ))
+            fig_bday.update_layout(
+                height=380, paper_bgcolor=PLOT_BG,
+                geo=dict(
+                    projection_type="natural earth",
+                    showland=True, landcolor="#1a1a2e",
+                    showocean=True, oceancolor="#0a0a0f",
+                    showcountries=True, countrycolor="#2a2a3a",
+                    showframe=False, bgcolor=PLOT_BG,
+                ),
+                font=dict(family="Barlow Condensed", color=FONT_COLOR),
+                margin=dict(l=0, r=0, t=10, b=0),
+            )
+            st.plotly_chart(fig_bday, use_container_width=True, config={"displayModeBar": False})
+    else:
+        st.warning("Données circuits indisponibles.")
 
 
 # ─── ONGLET 2 — PRÉDICTIONS ───────────────────────────────────────────────────
@@ -563,6 +875,28 @@ with tab_pred:
     st.markdown('<div class="section-title">Grille de départ</div>', unsafe_allow_html=True)
     use_grid = st.checkbox("Tenir compte des positions de départ (après qualifications)", key="use_grid", value=False)
     grid_data = {}
+
+    # Météo
+    st.markdown('<div class="section-title">🌦️ Météo</div>', unsafe_allow_html=True)
+    use_weather = st.checkbox("Récupérer la météo prévue (pluie/sec)", key="use_weather", value=True)
+    rainfall = 0.0
+    if use_weather:
+        wc1, wc2 = st.columns([2, 1])
+        with wc1:
+            if st.button("🌦️ Récupérer la météo", key="fetch_weather_btn"):
+                with st.spinner("Récupération météo…"):
+                    rainfall = fetch_weather_forecast(pred_circuit_name)
+                st.session_state["rainfall"] = rainfall
+                if rainfall == 1.0:
+                    st.warning("⛈️ Pluie probable — le modèle en tient compte.")
+                else:
+                    st.success("☀️ Temps sec prévu.")
+        with wc2:
+            rainfall = st.session_state.get("rainfall", 0.0)
+            manual_rain = st.checkbox("Forcer pluie", value=(rainfall == 1.0), key="manual_rain")
+            if manual_rain:
+                rainfall = 1.0
+                st.session_state["rainfall"] = 1.0
 
     if use_grid:
         grid_source = st.radio("Source", ["🌐 Récupérer via Jolpica", "✏️ Saisie manuelle"],
@@ -603,7 +937,11 @@ with tab_pred:
         with st.spinner("Récupération standings…"):
             drv_df, cst_df = fetch_standings(pred_year, pred_round)
 
+        # Ajoute rainfall aux features
+        _rainfall = st.session_state.get("rainfall", 0.0) if use_weather else 0.0
         df_feat = build_prediction_df(drv_df, cst_df, grid_data, use_grid, pred_round)
+        if not df_feat.empty:
+            df_feat["rainfall"] = _rainfall
         if df_feat.empty:
             st.error("Données indisponibles pour cette course.")
             st.stop()
@@ -631,6 +969,9 @@ with tab_pred:
                                name="Random Forest", marker_color="#e8002d", opacity=0.85))
         fig_p.add_trace(go.Bar(x=df_pred_result["driverName"], y=df_pred_result["proba_dt"]*100,
                                name="Decision Tree", marker_color="#00d2ff", opacity=0.85))
+        if "proba_svc" in df_pred_result.columns:
+            fig_p.add_trace(go.Bar(x=df_pred_result["driverName"], y=df_pred_result["proba_svc"]*100,
+                                   name="SVC", marker_color="#00ff88", opacity=0.85))
         fig_p.update_layout(
             height=320, barmode="group", paper_bgcolor=PLOT_BG, plot_bgcolor=PLOT_BG,
             font=dict(family="Barlow Condensed", color=FONT_COLOR),
