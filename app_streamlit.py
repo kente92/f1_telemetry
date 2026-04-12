@@ -163,8 +163,27 @@ def get_fastest_lap_telemetry(year: int, circuit: str, driver: str) -> dict | No
 
 
 def format_laptime(td) -> str:
+    """Formate un timedelta ou string en MM:SS.mmm — robuste à tous les types FastF1."""
     try:
-        total_s = td.total_seconds()
+        if td is None or (hasattr(td, '__class__') and 'NaT' in str(type(td))):
+            return "N/A"
+        # timedelta
+        if hasattr(td, 'total_seconds'):
+            total_s = td.total_seconds()
+            if total_s <= 0:
+                return "N/A"
+            return f"{int(total_s // 60)}:{total_s % 60:06.3f}"
+        # string "0 days 00:01:23.456"
+        s = str(td)
+        if 'days' in s:
+            parts = s.split(' ')
+            s = parts[-1]
+        # "00:01:23.456000"
+        h, m, rest = s.split(':')
+        sec = float(rest)
+        total_s = int(h)*3600 + int(m)*60 + sec
+        if total_s <= 0:
+            return "N/A"
         return f"{int(total_s // 60)}:{total_s % 60:06.3f}"
     except Exception:
         return "N/A"
@@ -583,7 +602,7 @@ with tab_race:
         sel_circuit = st.selectbox("Circuit", CIRCUITS, label_visibility="collapsed", key="race_circuit")
         st.markdown("<br>", unsafe_allow_html=True)
         load_btn = st.button("🏁  Charger la course", use_container_width=True, key="load_btn")
-        st.markdown("""<div style='margin-top:2rem;padding-top:1rem;border-top:1px solid #1e1e2e;font-size:0.7rem;color:#444;line-height:1.6;'>Données : FastF1 · Jolpica API<br>Cache : {_CACHE_DIR}</div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div style='margin-top:2rem;padding-top:1rem;border-top:1px solid #1e1e2e;font-size:0.7rem;color:#444;line-height:1.6;'>Données : FastF1 · Jolpica API<br>Cache : {_CACHE_DIR}</div>""", unsafe_allow_html=True)
 
     if not load_btn and "session_loaded" not in st.session_state:
         st.markdown("""<div style='text-align:center;padding:5rem 2rem;font-family:Barlow Condensed,sans-serif;'><div style='font-size:5rem;margin-bottom:1rem;'>🏎️</div><div style='font-size:1.2rem;letter-spacing:0.15em;text-transform:uppercase;color:#444;'>Sélectionnez une saison et un Grand Prix<br>puis cliquez sur Charger</div></div>""", unsafe_allow_html=True)
@@ -630,222 +649,182 @@ with tab_race:
         st.error("Session indisponible. Essayez une autre course.")
         st.stop()
 
-    # Résultats
-    results_df = get_race_results(year, circuit)
+    # ── Sous-onglets ──────────────────────────────────────────────────────────
+    sub_tab1, sub_tab2, sub_tab3, sub_tab4 = st.tabs([
+        "🏆 Résultats",
+        "📈 Télémétrie",
+        "🗺️ Circuit & Chronos",
+        "🌍 Monde & Anniversaire",
+    ])
 
-    if not results_df.empty:
-        # Podium
-        st.markdown('<div class="section-title">🏆 Podium</div>', unsafe_allow_html=True)
-        podium_colors = ["#FFD700", "#C0C0C0", "#CD7F32"]
-        pcols = st.columns(3)
-        for i in range(min(3, len(results_df))):
-            row = results_df.iloc[i]
-            try:
-                color = fastf1.plotting.get_driver_color(row["Abbreviation"], session)
-            except Exception:
-                color = podium_colors[i]
-            lt = format_laptime(row["FastestLapTime"]) if "FastestLapTime" in row and pd.notna(row["FastestLapTime"]) else "N/A"
-            fastest_icon = " ⚡" if "FastestLapRank" in row and row["FastestLapRank"] == 1 else ""
-            medals = ["🥇", "🥈", "🥉"]
-            with pcols[i]:
-                st.markdown(f"""<div class="podium-card" style="--color:{color}">
-                    <div style="font-size:1.8rem">{medals[i]}</div>
-                    <div class="podium-name">{row['Abbreviation']}</div>
-                    <div class="podium-meta">{row['FullName']} · {row['TeamName']}</div>
-                    <div class="podium-time">Meilleur tour : {lt}{fastest_icon}</div>
-                </div>""", unsafe_allow_html=True)
+    with sub_tab1:
+        # Résultats
+        results_df = get_race_results(year, circuit)
 
-        # Tableau
-        st.markdown('<div class="section-title">📋 Résultats complets</div>', unsafe_allow_html=True)
-        disp = results_df[["Position", "Abbreviation", "FullName", "TeamName", "GridPosition", "Status", "Points"]].copy()
-        if "FastestLapTime" in results_df.columns:
-            disp["FastestLapTime"] = results_df["FastestLapTime"].apply(lambda x: format_laptime(x) if pd.notna(x) else "—")
-        disp.columns = ["Pos", "Abrév.", "Pilote", "Écurie", "Grille", "Statut", "Pts"] + (["Meilleur Tour"] if "FastestLapTime" in results_df.columns else [])
-        for c in ["Pos", "Grille"]:
-            disp[c] = disp[c].fillna("—").apply(lambda x: str(int(float(x))) if x != "—" else "—")
-        st.dataframe(disp, use_container_width=True, hide_index=True)
-
-    # Télémétrie
-    st.markdown('<div class="section-title">📈 Télémétrie — Meilleur tour par pilote</div>', unsafe_allow_html=True)
-
-    all_drivers = sorted(session.laps["Driver"].unique().tolist())
-
-    selected_drivers = st.multiselect(
-        "Pilotes affichés",
-        options=all_drivers,
-        default=all_drivers,
-        key="telem_drivers",
-    )
-
-    if selected_drivers:
-        telem_data = {}
-        prog = st.progress(0, text="Chargement télémétrie…")
-        for i, drv in enumerate(selected_drivers):
-            data = get_fastest_lap_telemetry(year, circuit, drv)
-            if data is not None:
-                telem_data[drv] = data
-            prog.progress((i + 1) / len(selected_drivers),
-                          text=f"Chargement {drv}… ({i+1}/{len(selected_drivers)})")
-        prog.empty()
-
-        if telem_data:
-            for fig in make_telemetry_charts(telem_data):
-                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-        else:
-            st.warning("Aucune télémétrie disponible.")
-    else:
-        st.info("Sélectionnez au moins un pilote.")
-
-    # Carte circuit
-    st.markdown('<div class="section-title">🗺️ Carte du circuit — Delta vitesse</div>', unsafe_allow_html=True)
-    mc1, mc2 = st.columns(2)
-    with mc1:
-        map_d1 = st.selectbox("Pilote 1 (carte)", all_drivers, key="map_d1", index=0)
-    with mc2:
-        map_d2 = st.selectbox("Pilote 2 (carte)", all_drivers, key="map_d2",
-                              index=min(1, len(all_drivers) - 1))
-
-    if map_d1 != map_d2:
-        with st.spinner("Génération de la carte…"):
-            md1 = get_fastest_lap_telemetry(year, circuit, map_d1)
-            md2 = get_fastest_lap_telemetry(year, circuit, map_d2)
-        if md1 and md2 and "X" in md1["telemetry"].columns:
-            fig_map = make_track_map_comparison(md1, md2, map_d1, map_d2)
-            if fig_map:
-                st.plotly_chart(fig_map, use_container_width=True, config={"displayModeBar": False})
-        else:
-            st.info("Données GPS indisponibles pour cette course.")
-    else:
-        st.info("Sélectionnez deux pilotes différents pour la carte.")
-
-    # ── Chronos tour par tour ──────────────────────────────────────────────
-    st.markdown('<div class="section-title">⏱️ Chronos tour par tour</div>',
-                unsafe_allow_html=True)
-    st.caption("Les triangles ▲ indiquent les tours de sortie des stands.")
-
-    lbl_col1, lbl_col2 = st.columns(2)
-    with lbl_col1:
-        lap_d1 = st.selectbox("Pilote 1 (chronos)", all_drivers, key="lap_d1", index=0)
-    with lbl_col2:
-        lap_d2 = st.selectbox("Pilote 2 (chronos)", all_drivers, key="lap_d2",
-                              index=min(1, len(all_drivers) - 1))
-
-    if lap_d1 != lap_d2:
-        fig_laps = make_lap_by_lap_chart(session, lap_d1, lap_d2)
-        st.plotly_chart(fig_laps, use_container_width=True, config={"displayModeBar": False})
-    else:
-        st.info("Sélectionnez deux pilotes différents.")
-
-    # ── Carte mondiale des circuits ────────────────────────────────────────
-    st.markdown('<div class="section-title">🌍 Carte mondiale des circuits F1</div>',
-                unsafe_allow_html=True)
-
-    with st.spinner("Chargement de l'historique des circuits…"):
-        df_circ = load_circuits_races_df()
-
-    if not df_circ.empty:
-        df_circ["date"] = pd.to_datetime(df_circ["date"], errors="coerce")
-        df_circ["day"]   = df_circ["date"].dt.day
-        df_circ["month"] = df_circ["date"].dt.month
-
-        year_min_circ = int(df_circ["year"].min())
-        year_max_circ = int(df_circ["year"].max())
-
-        map_col_a, map_col_b = st.columns([3, 1])
-        with map_col_a:
-            yr_range = st.slider(
-                "Plage d'années", min_value=year_min_circ, max_value=year_max_circ,
-                value=(year_min_circ, year_max_circ), key="circ_years",
-            )
-        with map_col_b:
-            projection = st.selectbox(
-                "Projection", ["natural earth", "mercator", "orthographic",
-                               "equirectangular", "robinson", "mollweide"],
-                key="circ_proj",
-            )
-
-        df_map = df_circ[(df_circ["year"] >= yr_range[0]) & (df_circ["year"] <= yr_range[1])]
-
-        fig_geo = go.Figure(go.Scattergeo(
-            lat=df_map["lat"], lon=df_map["lng"],
-            text=df_map["race_name"] + " " + df_map["year"].astype(str),
-            customdata=df_map[["country", "location", "year"]].values,
-            hovertemplate=(
-                "<b>%{text}</b><br>"
-                "%{customdata[1]}, %{customdata[0]}<extra></extra>"
-            ),
-            mode="markers",
-            marker=dict(
-                size=5, color=df_map["year"],
-                colorscale=[[0, "#1a0a00"], [0.5, "#e8002d"], [1, "#00d2ff"]],
-                colorbar=dict(title="Année", tickfont=dict(color="#888", size=9),
-                              thickness=10, len=0.6),
-                showscale=True,
-            ),
-        ))
-        fig_geo.update_layout(
-            height=520,
-            paper_bgcolor=PLOT_BG,
-            geo=dict(
-                projection_type=projection,
-                showland=True, landcolor="#1a1a2e",
-                showocean=True, oceancolor="#0a0a0f",
-                showcountries=True, countrycolor="#2a2a3a",
-                showframe=False, bgcolor=PLOT_BG,
-            ),
-            font=dict(family="Barlow Condensed", color=FONT_COLOR),
-            margin=dict(l=0, r=0, t=10, b=0),
-        )
-        st.plotly_chart(fig_geo, use_container_width=True, config={"displayModeBar": False})
-        st.caption(
-            f"**{len(df_map):,}** Grands Prix entre {yr_range[0]} et {yr_range[1]} "
-            f"sur **{df_map['name_circuit'].nunique()}** circuits différents."
-        )
-
-        # ── Course le jour de ton anniversaire ────────────────────────────
-        st.markdown('<div class="section-title">🎂 Course le jour de ton anniversaire</div>',
-                    unsafe_allow_html=True)
-
-        bday = st.date_input(
-            "Ton jour de naissance",
-            value=datetime.date(1990, 6, 15),
-            min_value=datetime.date(1950, 1, 1),
-            max_value=datetime.date.today(),
-            key="bday_input",
-        )
-
-        bday_races = df_circ[
-            (df_circ["day"] == bday.day) & (df_circ["month"] == bday.month)
-        ].sort_values("year")
-
-        if bday_races.empty:
-            st.info(f"Aucune course n'a eu lieu le {bday.day}/{bday.month} dans l'histoire de la F1.")
-        else:
-            st.success(
-                f"**{len(bday_races)}** course(s) ont eu lieu un {bday.day}/{bday.month} "
-                f"entre {int(bday_races['year'].min())} et {int(bday_races['year'].max())} !"
-            )
+        if not results_df.empty:
+            # Podium
+            st.markdown('<div class="section-title">🏆 Podium</div>', unsafe_allow_html=True)
+            podium_colors = ["#FFD700", "#C0C0C0", "#CD7F32"]
+            pcols = st.columns(3)
+            for i in range(min(3, len(results_df))):
+                row = results_df.iloc[i]
+                try:
+                    color = fastf1.plotting.get_driver_color(row["Abbreviation"], session)
+                except Exception:
+                    color = podium_colors[i]
+                lt = format_laptime(row["FastestLapTime"]) if "FastestLapTime" in row and pd.notna(row["FastestLapTime"]) else "N/A"
+                fastest_icon = " ⚡" if "FastestLapRank" in row and row["FastestLapRank"] == 1 else ""
+                medals = ["🥇", "🥈", "🥉"]
+                with pcols[i]:
+                    st.markdown(f"""<div class="podium-card" style="--color:{color}">
+                        <div style="font-size:1.8rem">{medals[i]}</div>
+                        <div class="podium-name">{row['Abbreviation']}</div>
+                        <div class="podium-meta">{row['FullName']} · {row['TeamName']}</div>
+                        <div class="podium-time">Meilleur tour : {lt}{fastest_icon}</div>
+                    </div>""", unsafe_allow_html=True)
 
             # Tableau
-            disp_bday = bday_races[["year", "race_name", "name_circuit", "location", "country", "date"]].copy()
-            disp_bday.columns = ["Année", "Grand Prix", "Circuit", "Ville", "Pays", "Date"]
-            st.dataframe(disp_bday, use_container_width=True, hide_index=True)
+            st.markdown('<div class="section-title">📋 Résultats complets</div>', unsafe_allow_html=True)
+            disp = results_df[["Position", "Abbreviation", "FullName", "TeamName", "GridPosition", "Status", "Points"]].copy()
+            if "FastestLapTime" in results_df.columns:
+                disp["FastestLapTime"] = results_df["FastestLapTime"].apply(lambda x: format_laptime(x) if pd.notna(x) else "—")
+            disp.columns = ["Pos", "Abrév.", "Pilote", "Écurie", "Grille", "Statut", "Pts"] + (["Meilleur Tour"] if "FastestLapTime" in results_df.columns else [])
+            for c in ["Pos", "Grille"]:
+                disp[c] = disp[c].fillna("—").apply(lambda x: str(int(float(x))) if x != "—" else "—")
+            st.dataframe(disp, use_container_width=True, hide_index=True)
 
-            # Carte des courses du jour d'anniversaire
-            fig_bday = go.Figure(go.Scattergeo(
-                lat=bday_races["lat"], lon=bday_races["lng"],
-                text=bday_races["race_name"] + " " + bday_races["year"].astype(str),
-                hovertemplate="<b>%{text}</b><extra></extra>",
-                mode="markers+text",
-                textposition="top center",
-                textfont=dict(color="#e8002d", size=9, family="Barlow Condensed"),
-                marker=dict(size=10, color="#e8002d",
-                            line=dict(color="white", width=1)),
+
+
+    with sub_tab2:
+        # Télémétrie
+        st.markdown('<div class="section-title">📈 Télémétrie — Meilleur tour par pilote</div>', unsafe_allow_html=True)
+
+        all_drivers = sorted(session.laps["Driver"].unique().tolist())
+
+        selected_drivers = st.multiselect(
+            "Pilotes affichés",
+            options=all_drivers,
+            default=all_drivers,
+            key="telem_drivers",
+        )
+
+        if selected_drivers:
+            telem_data = {}
+            prog = st.progress(0, text="Chargement télémétrie…")
+            for i, drv in enumerate(selected_drivers):
+                data = get_fastest_lap_telemetry(year, circuit, drv)
+                if data is not None:
+                    telem_data[drv] = data
+                prog.progress((i + 1) / len(selected_drivers),
+                              text=f"Chargement {drv}… ({i+1}/{len(selected_drivers)})")
+            prog.empty()
+
+            if telem_data:
+                for fig in make_telemetry_charts(telem_data):
+                    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+            else:
+                st.warning("Aucune télémétrie disponible.")
+        else:
+            st.info("Sélectionnez au moins un pilote.")
+
+
+
+    with sub_tab3:
+        # Carte circuit
+        st.markdown('<div class="section-title">🗺️ Carte du circuit — Delta vitesse</div>', unsafe_allow_html=True)
+        mc1, mc2 = st.columns(2)
+        with mc1:
+            map_d1 = st.selectbox("Pilote 1 (carte)", all_drivers, key="map_d1", index=0)
+        with mc2:
+            map_d2 = st.selectbox("Pilote 2 (carte)", all_drivers, key="map_d2",
+                                  index=min(1, len(all_drivers) - 1))
+
+        if map_d1 != map_d2:
+            with st.spinner("Génération de la carte…"):
+                md1 = get_fastest_lap_telemetry(year, circuit, map_d1)
+                md2 = get_fastest_lap_telemetry(year, circuit, map_d2)
+            if md1 and md2 and "X" in md1["telemetry"].columns:
+                fig_map = make_track_map_comparison(md1, md2, map_d1, map_d2)
+                if fig_map:
+                    st.plotly_chart(fig_map, use_container_width=True, config={"displayModeBar": False})
+            else:
+                st.info("Données GPS indisponibles pour cette course.")
+        else:
+            st.info("Sélectionnez deux pilotes différents pour la carte.")
+
+        # ── Chronos tour par tour ──────────────────────────────────────────────
+        st.markdown('<div class="section-title">⏱️ Chronos tour par tour</div>',
+                    unsafe_allow_html=True)
+        st.caption("Les triangles ▲ indiquent les tours de sortie des stands.")
+
+        lbl_col1, lbl_col2 = st.columns(2)
+        with lbl_col1:
+            lap_d1 = st.selectbox("Pilote 1 (chronos)", all_drivers, key="lap_d1", index=0)
+        with lbl_col2:
+            lap_d2 = st.selectbox("Pilote 2 (chronos)", all_drivers, key="lap_d2",
+                                  index=min(1, len(all_drivers) - 1))
+
+        if lap_d1 != lap_d2:
+            fig_laps = make_lap_by_lap_chart(session, lap_d1, lap_d2)
+            st.plotly_chart(fig_laps, use_container_width=True, config={"displayModeBar": False})
+        else:
+            st.info("Sélectionnez deux pilotes différents.")
+
+
+
+    with sub_tab4:
+        # ── Carte mondiale des circuits ────────────────────────────────────────
+        st.markdown('<div class="section-title">🌍 Carte mondiale des circuits F1</div>',
+                    unsafe_allow_html=True)
+
+        with st.spinner("Chargement de l'historique des circuits…"):
+            df_circ = load_circuits_races_df()
+
+        if not df_circ.empty:
+            df_circ["date"] = pd.to_datetime(df_circ["date"], errors="coerce")
+            df_circ["day"]   = df_circ["date"].dt.day
+            df_circ["month"] = df_circ["date"].dt.month
+
+            year_min_circ = int(df_circ["year"].min())
+            year_max_circ = int(df_circ["year"].max())
+
+            map_col_a, map_col_b = st.columns([3, 1])
+            with map_col_a:
+                yr_range = st.slider(
+                    "Plage d'années", min_value=year_min_circ, max_value=year_max_circ,
+                    value=(year_min_circ, year_max_circ), key="circ_years",
+                )
+            with map_col_b:
+                projection = st.selectbox(
+                    "Projection", ["natural earth", "mercator", "orthographic",
+                                   "equirectangular", "robinson", "mollweide"],
+                    key="circ_proj",
+                )
+
+            df_map = df_circ[(df_circ["year"] >= yr_range[0]) & (df_circ["year"] <= yr_range[1])]
+
+            fig_geo = go.Figure(go.Scattergeo(
+                lat=df_map["lat"], lon=df_map["lng"],
+                text=df_map["race_name"] + " " + df_map["year"].astype(str),
+                customdata=df_map[["country", "location", "year"]].values,
+                hovertemplate=(
+                    "<b>%{text}</b><br>"
+                    "%{customdata[1]}, %{customdata[0]}<extra></extra>"
+                ),
+                mode="markers",
+                marker=dict(
+                    size=5, color=df_map["year"],
+                    colorscale=[[0, "#1a0a00"], [0.5, "#e8002d"], [1, "#00d2ff"]],
+                    colorbar=dict(title="Année", tickfont=dict(color="#888", size=9),
+                                  thickness=10, len=0.6),
+                    showscale=True,
+                ),
             ))
-            fig_bday.update_layout(
-                height=380, paper_bgcolor=PLOT_BG,
+            fig_geo.update_layout(
+                height=520,
+                paper_bgcolor=PLOT_BG,
                 geo=dict(
-                    projection_type="natural earth",
+                    projection_type=projection,
                     showland=True, landcolor="#1a1a2e",
                     showocean=True, oceancolor="#0a0a0f",
                     showcountries=True, countrycolor="#2a2a3a",
@@ -854,9 +833,67 @@ with tab_race:
                 font=dict(family="Barlow Condensed", color=FONT_COLOR),
                 margin=dict(l=0, r=0, t=10, b=0),
             )
-            st.plotly_chart(fig_bday, use_container_width=True, config={"displayModeBar": False})
-    else:
-        st.warning("Données circuits indisponibles.")
+            st.plotly_chart(fig_geo, use_container_width=True, config={"displayModeBar": False})
+            st.caption(
+                f"**{len(df_map):,}** Grands Prix entre {yr_range[0]} et {yr_range[1]} "
+                f"sur **{df_map['name_circuit'].nunique()}** circuits différents."
+            )
+
+            # ── Course le jour de ton anniversaire ────────────────────────────
+            st.markdown('<div class="section-title">🎂 Course le jour de ton anniversaire</div>',
+                        unsafe_allow_html=True)
+
+            bday = st.date_input(
+                "Ton jour de naissance",
+                value=datetime.date(1990, 6, 15),
+                min_value=datetime.date(1950, 1, 1),
+                max_value=datetime.date.today(),
+                key="bday_input",
+            )
+
+            bday_races = df_circ[
+                (df_circ["day"] == bday.day) & (df_circ["month"] == bday.month)
+            ].sort_values("year")
+
+            if bday_races.empty:
+                st.info(f"Aucune course n'a eu lieu le {bday.day}/{bday.month} dans l'histoire de la F1.")
+            else:
+                st.success(
+                    f"**{len(bday_races)}** course(s) ont eu lieu un {bday.day}/{bday.month} "
+                    f"entre {int(bday_races['year'].min())} et {int(bday_races['year'].max())} !"
+                )
+
+                # Tableau
+                disp_bday = bday_races[["year", "race_name", "name_circuit", "location", "country", "date"]].copy()
+                disp_bday.columns = ["Année", "Grand Prix", "Circuit", "Ville", "Pays", "Date"]
+                st.dataframe(disp_bday, use_container_width=True, hide_index=True)
+
+                # Carte des courses du jour d'anniversaire
+                fig_bday = go.Figure(go.Scattergeo(
+                    lat=bday_races["lat"], lon=bday_races["lng"],
+                    text=bday_races["race_name"] + " " + bday_races["year"].astype(str),
+                    hovertemplate="<b>%{text}</b><extra></extra>",
+                    mode="markers+text",
+                    textposition="top center",
+                    textfont=dict(color="#e8002d", size=9, family="Barlow Condensed"),
+                    marker=dict(size=10, color="#e8002d",
+                                line=dict(color="white", width=1)),
+                ))
+                fig_bday.update_layout(
+                    height=380, paper_bgcolor=PLOT_BG,
+                    geo=dict(
+                        projection_type="natural earth",
+                        showland=True, landcolor="#1a1a2e",
+                        showocean=True, oceancolor="#0a0a0f",
+                        showcountries=True, countrycolor="#2a2a3a",
+                        showframe=False, bgcolor=PLOT_BG,
+                    ),
+                    font=dict(family="Barlow Condensed", color=FONT_COLOR),
+                    margin=dict(l=0, r=0, t=10, b=0),
+                )
+                st.plotly_chart(fig_bday, use_container_width=True, config={"displayModeBar": False})
+        else:
+            st.warning("Données circuits indisponibles.")
 
 
 # ─── ONGLET 2 — PRÉDICTIONS ───────────────────────────────────────────────────
