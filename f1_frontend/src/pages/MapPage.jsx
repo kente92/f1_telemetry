@@ -31,18 +31,6 @@ function RangeSlider({ min, max, value, onChange }) {
           appearance:'none', WebkitAppearance:'none', background:'transparent',
           outline:'none', cursor:'pointer', pointerEvents:'auto', zIndex:3 }} />
 
-      <p style={{ fontSize:'0.75rem', color:'var(--muted)', marginTop:'1.5rem', lineHeight:'1.6' }}>
-        Données fournies par{' '}
-        <a href="https://theoehrly.github.io/Fast-F1/" target="_blank" rel="noreferrer"
-          style={{ color:'var(--red)', textDecoration:'none' }}>FastF1</a>
-        {' '}· Résultats historiques via{' '}
-        <a href="https://api.jolpi.ca" target="_blank" rel="noreferrer"
-          style={{ color:'var(--red)', textDecoration:'none' }}>Jolpica / Ergast</a>
-        {' '}· Météo via{' '}
-        <a href="https://open-meteo.com" target="_blank" rel="noreferrer"
-          style={{ color:'var(--red)', textDecoration:'none' }}>Open-Meteo</a>
-        . Merci à eux ! 🙏
-      </p>
     </div>
   )
 }
@@ -226,6 +214,19 @@ export default function MapPage() {
           </p>
         )
       )}
+
+      <p style={{ fontSize:'0.75rem', color:'var(--muted)', marginTop:'1.5rem', lineHeight:'1.6' }}>
+        Données fournies par{' '}
+        <a href="https://theoehrly.github.io/Fast-F1/" target="_blank" rel="noreferrer"
+          style={{ color:'var(--red)', textDecoration:'none' }}>FastF1</a>
+        {' '}· Résultats historiques via{' '}
+        <a href="https://api.jolpi.ca" target="_blank" rel="noreferrer"
+          style={{ color:'var(--red)', textDecoration:'none' }}>Jolpica / Ergast</a>
+        {' '}· Météo via{' '}
+        <a href="https://open-meteo.com" target="_blank" rel="noreferrer"
+          style={{ color:'var(--red)', textDecoration:'none' }}>Open-Meteo</a>
+        . Merci à eux ! 🙏
+      </p>
     </div>
   )
 }
