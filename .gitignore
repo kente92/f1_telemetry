@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.env
+
+# Node
+f1_frontend/node_modules/
+f1_frontend/.vite/
+
+# Cache FastF1
+cache/
+/tmp/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,14 @@
+[Unit]
+Description=F1 API (FastAPI + Uvicorn)
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/var/www/f1_api
+Environment="PATH=/var/www/f1_api/venv/bin"
+ExecStart=/var/www/f1_api/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8001 --workers 2
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
