@@ -161,7 +161,7 @@ export default function PredictPage() {
   const daysToRace = rDate ? Math.ceil((rDate - today) / (1000*60*60*24)) : null
 
   return (
-    <div style={{ display:'flex', gap:'2rem', alignItems:'flex-start' }}>
+    <div style={{ display:'flex', gap:'2rem', alignItems:'flex-start', flexWrap:'wrap' }}>
 
       {/* ── Colonne principale ─────────────────────────────────────────── */}
       <div style={{ flex:1, minWidth:0 }}>
@@ -456,7 +456,7 @@ export default function PredictPage() {
       </div>
 
       {/* ── Colonne guide ──────────────────────────────────────────────── */}
-      <div style={{ width:'280px', flexShrink:0 }}>
+      <div style={{ width:'280px', flexShrink:0, minWidth:'280px', flex:'1' }}>
         <div className="section-title">📖 Guide d'utilisation</div>
 
         {/* Sélecteur de contexte */}
