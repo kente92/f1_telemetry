@@ -16,3 +16,6 @@ cache/
 # OS
 .DS_Store
 Thumbs.db
+
+f1_frontend/dist/
+f1_frontend/node_modules/
