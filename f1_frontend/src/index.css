@@ -1,0 +1,322 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@300;400;500&display=swap');
+
+:root {
+  --red:      #e8002d;
+  --red-light:#ff6b6b;
+  --bg:       #0a0a0f;
+  --bg2:      #13131a;
+  --bg3:      #1a1a24;
+  --border:   #1e1e2e;
+  --text:     #e8e8e8;
+  --muted:    #666666;
+  --gold:     #FFD700;
+  --silver:   #C0C0C0;
+  --bronze:   #CD7F32;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Barlow', sans-serif;
+  font-weight: 400;
+  min-height: 100vh;
+}
+
+h1, h2, h3, .condensed {
+  font-family: 'Barlow Condensed', sans-serif;
+}
+
+/* ── Layout ─────────────────────────────────────────────────── */
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.main-content {
+  flex: 1;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 2rem 1.5rem;
+}
+
+/* ── Navbar ─────────────────────────────────────────────────── */
+.navbar {
+  background: #0d0d14;
+  border-bottom: 1px solid var(--border);
+  padding: 0 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  height: 56px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.navbar-brand {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 900;
+  font-size: 1.4rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: linear-gradient(90deg, #e8002d, #ff6b6b);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.navbar-links {
+  display: flex;
+  gap: 0.25rem;
+  list-style: none;
+  flex: 1;
+  overflow-x: auto;
+}
+
+.navbar-links a {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  text-decoration: none;
+  color: var(--muted);
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition: color 0.15s, background 0.15s;
+}
+
+.navbar-links a:hover { color: var(--text); background: var(--bg2); }
+.navbar-links a.active { color: var(--red); border-bottom: 2px solid var(--red); }
+
+/* ── Section titles ─────────────────────────────────────────── */
+.section-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--red);
+  margin: 1.5rem 0 0.8rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ── Cards ──────────────────────────────────────────────────── */
+.card {
+  background: var(--bg2);
+  border-radius: 8px;
+  padding: 1.2rem 1.5rem;
+}
+
+.card-red-left {
+  border-left: 4px solid var(--red);
+}
+
+/* ── Buttons ────────────────────────────────────────────────── */
+.btn {
+  background: var(--red);
+  color: white;
+  border: none;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.6rem 1.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+.btn:hover { background: #ff1a3e; transform: translateY(-1px); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--red);
+  color: var(--red);
+}
+.btn-outline:hover { background: var(--red); color: white; }
+
+/* ── Form controls ──────────────────────────────────────────── */
+.form-group { display: flex; flex-direction: column; gap: 0.4rem; }
+.form-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+select, input[type="number"] {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.5rem 0.8rem;
+  border-radius: 4px;
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+select:focus, input:focus { border-color: var(--red); }
+
+/* ── Checkbox ───────────────────────────────────────────────── */
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+  user-select: none;
+}
+.checkbox-row input[type="checkbox"] { accent-color: var(--red); width: 16px; height: 16px; }
+.checkbox-row span { font-size: 0.9rem; color: var(--text); }
+
+/* ── Grid layouts ───────────────────────────────────────────── */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+@media (max-width: 768px) {
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+}
+
+/* ── Loading / Error ────────────────────────────────────────── */
+.loading {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: var(--muted);
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1.1rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.loading::after {
+  content: '';
+  display: block;
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--red);
+  border-radius: 50%;
+  margin: 1rem auto 0;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.error {
+  background: rgba(232,0,45,0.1);
+  border-left: 4px solid var(--red);
+  border-radius: 4px;
+  padding: 1rem 1.5rem;
+  color: var(--red-light);
+  font-size: 0.9rem;
+}
+
+.empty {
+  text-align: center;
+  padding: 5rem 2rem;
+  color: var(--muted);
+  font-family: 'Barlow Condensed', sans-serif;
+}
+.empty-icon { font-size: 4rem; margin-bottom: 1rem; }
+.empty-text { font-size: 1.1rem; letter-spacing: 0.12em; text-transform: uppercase; }
+
+/* ── Podium cards ───────────────────────────────────────────── */
+.podium-card {
+  background: var(--bg2);
+  border-radius: 8px;
+  padding: 1.2rem 1.5rem;
+  border-left: 4px solid var(--driver-color, var(--red));
+}
+.podium-medal { font-size: 2rem; margin-bottom: 0.4rem; }
+.podium-abbr {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 900;
+  font-size: 1.8rem;
+  text-transform: uppercase;
+  color: var(--driver-color, var(--red));
+  letter-spacing: 0.05em;
+}
+.podium-name { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-top: 0.2rem; }
+.podium-laptime {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: white;
+  margin-top: 0.5rem;
+}
+
+/* ── Results table ──────────────────────────────────────────── */
+.results-table { width: 100%; border-collapse: collapse; }
+.results-table th {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.75rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-align: left;
+  padding: 0.6rem 0.8rem;
+  border-bottom: 1px solid var(--border);
+}
+.results-table td { padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+.results-table tr:hover td { background: var(--bg3); }
+.driver-dot {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  margin-right: 0.5rem;
+}
+
+/* ── Multiselect pills ──────────────────────────────────────── */
+.pills { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1rem; }
+.pill {
+  padding: 0.3rem 0.7rem;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: opacity 0.15s;
+}
+.pill.active { opacity: 1; }
+.pill.inactive { opacity: 0.35; filter: grayscale(0.8); }
+
+/* ── Prediction ranking ─────────────────────────────────────── */
+.pred-row {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  background: var(--bg2);
+  border-left: 3px solid var(--left-color, var(--border));
+  border-radius: 4px;
+  padding: 0.5rem 0.8rem;
+  margin-bottom: 0.3rem;
+}
+.pred-pos {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+  font-size: 1.1rem;
+  min-width: 2rem;
+  text-align: right;
+}
+.pred-name { flex: 1; }
+.pred-name-main { font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 0.95rem; }
+.pred-name-sub { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; }
+.pred-prob {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+  font-size: 1rem;
+  min-width: 3.5rem;
+  text-align: right;
+}
+.pred-bar-bg { background: var(--border); border-radius: 2px; height: 3px; margin-top: 2px; }
+.pred-bar { height: 3px; border-radius: 2px; }
