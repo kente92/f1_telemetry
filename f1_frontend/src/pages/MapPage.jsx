@@ -9,31 +9,32 @@ const MAX_YEAR = new Date().getFullYear()
 function RangeSlider({ min, max, value, onChange }) {
   const [from, to] = value
   const pct = v => ((v - min) / (max - min)) * 100
+  const fromPct = pct(from)
+  const toPct   = pct(to)
+  // Z-index dynamique : le curseur proche du min passe devant si les deux se chevauchent
+  const fromZ = from > (min + max) / 2 ? 5 : 4
+  const toZ   = fromZ === 5 ? 4 : 5
 
   return (
-    <div style={{ position:'relative', height:'40px', userSelect:'none' }}>
-      {/* Track background */}
-      <div style={{ position:'absolute', top:'18px', left:0, right:0, height:'4px',
+    <div style={{ position:'relative', height:'48px', userSelect:'none' }}>
+      <div style={{ position:'absolute', top:'22px', left:0, right:0, height:'4px',
         background:'var(--border)', borderRadius:'2px' }} />
-      {/* Track active */}
-      <div style={{ position:'absolute', top:'18px', height:'4px', borderRadius:'2px',
-        background:'var(--red)', left:`${pct(from)}%`, right:`${100-pct(to)}%` }} />
-      {/* Input from */}
+      <div style={{ position:'absolute', top:'22px', height:'4px', borderRadius:'2px',
+        background:'var(--red)', left:`${fromPct}%`, right:`${100-toPct}%` }} />
       <input type="range" min={min} max={max} value={from}
-        onChange={e => { const v=+e.target.value; if(v<to) onChange([v,to]) }}
-        style={{ position:'absolute', width:'100%', height:'4px', top:'18px',
+        onChange={e => { const v=+e.target.value; if(v < to) onChange([v, to]) }}
+        style={{ position:'absolute', width:'100%', height:'48px', top:0,
           appearance:'none', WebkitAppearance:'none', background:'transparent',
-          outline:'none', cursor:'pointer', pointerEvents:'auto', zIndex:3 }} />
-      {/* Input to */}
+          outline:'none', cursor:'pointer', zIndex:fromZ }} />
       <input type="range" min={min} max={max} value={to}
-        onChange={e => { const v=+e.target.value; if(v>from) onChange([from,v]) }}
-        style={{ position:'absolute', width:'100%', height:'4px', top:'18px',
+        onChange={e => { const v=+e.target.value; if(v > from) onChange([from, v]) }}
+        style={{ position:'absolute', width:'100%', height:'48px', top:0,
           appearance:'none', WebkitAppearance:'none', background:'transparent',
-          outline:'none', cursor:'pointer', pointerEvents:'auto', zIndex:3 }} />
-
+          outline:'none', cursor:'pointer', zIndex:toZ }} />
     </div>
   )
 }
+
 
 export default function MapPage() {
   const [races,      setRaces]      = useState([])
@@ -156,20 +157,31 @@ export default function MapPage() {
 
       {/* Birthday */}
       <div className="section-title">🎂 Course le jour de ton anniversaire</div>
+      <p style={{ fontSize:'0.85rem', color:'var(--muted)', marginBottom:'0.8rem' }}>
+        Entrez votre jour et mois de naissance pour trouver les GP disputés ce jour-là.
+      </p>
       <div style={{ display:'flex', gap:'0.8rem', alignItems:'flex-end', flexWrap:'wrap', marginBottom:'1rem' }}>
         <div className="form-group">
-          <label className="form-label">Jour</label>
-          <input type="number" min={1} max={31} placeholder="15"
-            value={bdayDay} onChange={e => setBdayDay(e.target.value)}
-            style={{ width:'70px' }} />
+          <label className="form-label">Jour (1-31)</label>
+          <input type="number" min={1} max={31}
+            value={bdayDay}
+            onChange={e => setBdayDay(e.target.value)}
+            style={{ width:'80px', color: bdayDay ? 'var(--text)' : 'var(--muted)',
+              fontWeight: bdayDay ? '600' : '400' }} />
         </div>
         <div className="form-group">
-          <label className="form-label">Mois</label>
-          <input type="number" min={1} max={12} placeholder="6"
-            value={bdayMonth} onChange={e => setBdayMonth(e.target.value)}
-            style={{ width:'70px' }} />
+          <label className="form-label">Mois (1-12)</label>
+          <input type="number" min={1} max={12}
+            value={bdayMonth}
+            onChange={e => setBdayMonth(e.target.value)}
+            style={{ width:'80px', color: bdayMonth ? 'var(--text)' : 'var(--muted)',
+              fontWeight: bdayMonth ? '600' : '400' }} />
         </div>
-        <button className="btn" onClick={searchBday}>🎂 Chercher</button>
+        <button className="btn" onClick={searchBday}
+          disabled={!bdayDay || !bdayMonth}
+          style={{ opacity: (!bdayDay || !bdayMonth) ? 0.5 : 1 }}>
+          🎂 Chercher
+        </button>
       </div>
 
       {bdayRaces !== null && (

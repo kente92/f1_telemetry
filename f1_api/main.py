@@ -392,8 +392,28 @@ def _team_color(team_name: str) -> str:
     if not team_name:
         return "#888888"
     t = str(team_name).lower()
+    # Correspondances exactes d abord
     for key, color in TEAM_COLORS.items():
         if key in t:
+            return color
+    # Correspondances partielles Jolpica (noms complets)
+    JOLPICA_MAP = {
+        "red bull racing":   "#3671C6",
+        "scuderia ferrari":  "#E8002D",
+        "mercedes-amg":      "#27F4D2",
+        "mclaren f1":        "#FF8000",
+        "aston martin f1":   "#229971",
+        "alpine f1":         "#FF87BC",
+        "williams racing":   "#64C4FF",
+        "visa cash app rb":  "#6692FF",
+        "kick sauber f1":    "#52E252",
+        "monza haas":        "#B6BABD",
+        "haas f1":           "#B6BABD",
+        "racing bulls":      "#6692FF",
+        "sauber":            "#52E252",
+    }
+    for key, color in JOLPICA_MAP.items():
+        if key in t or t in key:
             return color
     return "#888888"
 

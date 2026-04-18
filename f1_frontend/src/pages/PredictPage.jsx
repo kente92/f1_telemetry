@@ -12,40 +12,30 @@ const ALL_YEARS = Array.from(
 const GUIDES = {
   before_quali: {
     icon: '📅',
-    title: 'Avant les qualifications (jeudi/vendredi)',
+    title: 'Avant les qualifications',
     color: '#00d2ff',
     steps: [
-      { ok: true,  text: 'Sélectionnez la saison et le Grand Prix' },
-      { ok: true,  text: 'Le numéro de manche est automatique' },
-      { ok: false, text: 'NE PAS cocher "Grille de départ" — les qualifs n\'ont pas eu lieu' },
+      { ok: true,  text: 'Sélectionnez la saison et le Grand Prix — le N° de manche se remplit automatiquement' },
+      { ok: false, text: 'NE PAS cocher "Grille de départ" — les qualifs n'ont pas encore eu lieu' },
       { ok: true,  text: 'Récupérez la météo si disponible' },
       { ok: true,  text: 'Cliquez Prédire → prédiction basée sur les standings du championnat' },
     ]
   },
   after_quali: {
     icon: '🏁',
-    title: 'Après les qualifications (samedi soir)',
+    title: 'Après les qualifications',
     color: '#FFD700',
     steps: [
       { ok: true,  text: 'Sélectionnez la saison et le Grand Prix' },
       { ok: true,  text: 'Cochez "Grille de départ"' },
-      { ok: true,  text: 'Cliquez "Récupérer via Jolpica" pour charger la grille automatiquement' },
-      { ok: true,  text: 'Récupérez la météo' },
-      { ok: true,  text: 'Cliquez Prédire → prédiction la plus précise' },
-    ]
-  },
-  race_day: {
-    icon: '🏎️',
-    title: 'Jour de course (dimanche)',
-    color: '#e8002d',
-    steps: [
-      { ok: true,  text: 'Même procédure qu\'après les qualifs' },
-      { ok: true,  text: 'Vérifiez la météo — elle peut avoir changé' },
-      { ok: true,  text: 'Si pluie : cochez "Forcer pluie" pour simuler une course humide' },
-      { ok: true,  text: 'La prédiction tient compte de la pluie dans le modèle ML' },
+      { ok: true,  text: 'Cliquez "Récupérer automatiquement" — la grille se charge depuis Jolpica' },
+      { ok: true,  text: 'Ou "Saisie manuelle" si les qualifs viennent juste de se terminer' },
+      { ok: true,  text: 'Récupérez la météo · Cochez "Forcer pluie" si besoin' },
+      { ok: true,  text: 'Cliquez Prédire → prédiction la plus précise ✅' },
     ]
   },
 }
+
 
 export default function PredictPage() {
   const [year,       setYear]       = useState(ALL_YEARS[0])
