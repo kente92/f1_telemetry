@@ -346,12 +346,13 @@ export default function PredictPage() {
             <div className="section-title">🏆 Podium prédit</div>
             <div className="grid-3" style={{ marginBottom:'1.5rem' }}>
               {top3.map((r, i) => (
-                <div key={i} className="card card-red-left" style={{ borderLeftColor:'#ff6b35' }}>
+                <div key={i} className="card card-red-left" style={{ borderLeftColor: r.color || '#ff6b35' }}>
                   <div style={{ fontFamily:'Barlow Condensed', fontWeight:900,
-                    fontSize:'1.3rem', color:'#ff6b35' }}>
+                    fontSize:'1.3rem', color: r.color || '#ff6b35' }}>
                     {medals[i]} {r.name.toUpperCase()}
                   </div>
-                  <div style={{ fontSize:'0.75rem', color:'var(--muted)', textTransform:'uppercase', marginTop:'0.2rem' }}>
+                  <div style={{ fontSize:'0.75rem', color: r.color || 'var(--muted)',
+                    fontWeight:600, textTransform:'uppercase', marginTop:'0.2rem' }}>
                     {r.constructor}{r.grid ? ` · Grille P${r.grid}` : ''}
                   </div>
                   <div style={{ fontFamily:'Barlow Condensed', fontSize:'1.4rem',
@@ -380,7 +381,7 @@ export default function PredictPage() {
                     <div style={{ flex:1 }}>
                       <div style={{ fontFamily:'Barlow Condensed', fontWeight:600,
                         fontSize:'0.95rem', color: hl ? 'white' : '#aaa' }}>{r.name}</div>
-                      <div style={{ fontSize:'0.7rem', color:'var(--muted)', textTransform:'uppercase' }}>
+                      <div style={{ fontSize:'0.7rem', color: r.color || 'var(--muted)', fontWeight:600, textTransform:'uppercase' }}>
                         {r.constructor}{r.grid ? ` · P${r.grid}` : ''}
                       </div>
                     </div>

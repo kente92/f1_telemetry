@@ -8,29 +8,24 @@ const MAX_YEAR = new Date().getFullYear()
 
 function RangeSlider({ min, max, value, onChange }) {
   const [from, to] = value
-  const pct = v => ((v - min) / (max - min)) * 100
-  const fromPct = pct(from)
-  const toPct   = pct(to)
-  // Borne basse (from) au-dessus par défaut, sauf si elle est au max
-  const fromZ = from >= to - 1 ? 4 : 5
-  const toZ   = from >= to - 1 ? 5 : 4
-
   return (
-    <div style={{ position:'relative', height:'48px', userSelect:'none' }}>
-      <div style={{ position:'absolute', top:'22px', left:0, right:0, height:'4px',
-        background:'var(--border)', borderRadius:'2px' }} />
-      <div style={{ position:'absolute', top:'22px', height:'4px', borderRadius:'2px',
-        background:'var(--red)', left:`${fromPct}%`, right:`${100-toPct}%` }} />
-      <input type="range" min={min} max={max} value={from}
-        onChange={e => { const v=+e.target.value; if(v < to) onChange([v, to]) }}
-        style={{ position:'absolute', width:'100%', height:'48px', top:0,
-          appearance:'none', WebkitAppearance:'none', background:'transparent',
-          outline:'none', cursor:'pointer', zIndex:fromZ }} />
-      <input type="range" min={min} max={max} value={to}
-        onChange={e => { const v=+e.target.value; if(v > from) onChange([from, v]) }}
-        style={{ position:'absolute', width:'100%', height:'48px', top:0,
-          appearance:'none', WebkitAppearance:'none', background:'transparent',
-          outline:'none', cursor:'pointer', zIndex:toZ }} />
+    <div style={{ display:'flex', flexDirection:'column', gap:'0.6rem' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:'0.8rem' }}>
+        <span style={{ fontSize:'0.75rem', color:'var(--muted)', minWidth:'28px' }}>De</span>
+        <input type="range" min={min} max={to} value={from}
+          onChange={e => onChange([+e.target.value, to])}
+          style={{ flex:1, accentColor:'var(--red)', height:'4px', cursor:'pointer' }} />
+        <span style={{ fontFamily:'Barlow Condensed', fontWeight:700,
+          color:'var(--text)', minWidth:'38px', textAlign:'right' }}>{from}</span>
+      </div>
+      <div style={{ display:'flex', alignItems:'center', gap:'0.8rem' }}>
+        <span style={{ fontSize:'0.75rem', color:'var(--muted)', minWidth:'28px' }}>À</span>
+        <input type="range" min={from} max={max} value={to}
+          onChange={e => onChange([from, +e.target.value])}
+          style={{ flex:1, accentColor:'var(--red)', height:'4px', cursor:'pointer' }} />
+        <span style={{ fontFamily:'Barlow Condensed', fontWeight:700,
+          color:'var(--text)', minWidth:'38px', textAlign:'right' }}>{to}</span>
+      </div>
     </div>
   )
 }
@@ -74,27 +69,6 @@ export default function MapPage() {
 
   return (
     <div>
-      {/* Slider CSS fix */}
-      <style>{`
-        input[type=range]::-webkit-slider-thumb {
-          -webkit-appearance: none;
-          width: 18px; height: 18px;
-          border-radius: 50%;
-          background: var(--red);
-          border: 2px solid white;
-          cursor: pointer;
-          position: relative;
-          z-index: 4;
-        }
-        input[type=range]::-moz-range-thumb {
-          width: 18px; height: 18px;
-          border-radius: 50%;
-          background: var(--red);
-          border: 2px solid white;
-          cursor: pointer;
-        }
-      `}</style>
-
       <h1 className="condensed" style={{ fontSize:'2rem', fontWeight:900, textTransform:'uppercase',
         marginBottom:'1.5rem', background:'linear-gradient(90deg,#e8002d,#ff6b6b,#fff)',
         WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>

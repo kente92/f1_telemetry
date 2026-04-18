@@ -880,7 +880,7 @@ def predict(year:int=Query(...),round_num:int=Query(...),circuit:str=Query(...),
     rows = []
     for d in std["drivers"]:
         cst = cmap.get(d["constructorId"],{})
-        row = {"driverId":d["driverId"],"name":d["name"],"constructor":d["constructor"],
+        row = {"driverId":d["driverId"],"name":d["name"],"constructor":d["constructor"],"color":d.get("color","#888888"),
                "driverPoints":d["points"] if round_num>1 else 0.0,
                "driverStandingPosition":d["position"] if round_num>1 else 20.0,
                "driverWins":d["wins"] if round_num>1 else 0.0,
@@ -900,7 +900,7 @@ def predict(year:int=Query(...),round_num:int=Query(...),circuit:str=Query(...),
     if psvc is not None: df["proba_svc"]=psvc
     df["position"]=df["proba_avg"].rank(ascending=False,method="first").astype(int)
     df=df.sort_values("position")
-    cols=["position","driverId","name","constructor","proba_rf","proba_dt","proba_avg"]
+    cols=["position","driverId","name","constructor","color","proba_rf","proba_dt","proba_avg"]
     if use_grid: cols.append("grid")
     if psvc is not None: cols.insert(-1,"proba_svc")
     return {"predictions":df[cols].to_dict("records"),
