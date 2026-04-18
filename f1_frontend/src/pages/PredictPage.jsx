@@ -16,7 +16,7 @@ const GUIDES = {
     color: '#00d2ff',
     steps: [
       { ok: true,  text: 'Sélectionnez la saison et le Grand Prix — le N° de manche se remplit automatiquement' },
-      { ok: false, text: 'NE PAS cocher "Grille de départ" — les qualifs n'ont pas encore eu lieu' },
+      { ok: false, text: "NE PAS cocher \"Grille de départ\" — les qualifs n'ont pas encore eu lieu" },
       { ok: true,  text: 'Récupérez la météo si disponible' },
       { ok: true,  text: 'Cliquez Prédire → prédiction basée sur les standings du championnat' },
     ]
@@ -29,7 +29,7 @@ const GUIDES = {
       { ok: true,  text: 'Sélectionnez la saison et le Grand Prix' },
       { ok: true,  text: 'Cochez "Grille de départ"' },
       { ok: true,  text: 'Cliquez "Récupérer automatiquement" — la grille se charge depuis Jolpica' },
-      { ok: true,  text: 'Ou "Saisie manuelle" si les qualifs viennent juste de se terminer' },
+      { ok: true,  text: "Ou \"Saisie manuelle\" si les qualifs viennent juste de se terminer" },
       { ok: true,  text: 'Récupérez la météo · Cochez "Forcer pluie" si besoin' },
       { ok: true,  text: 'Cliquez Prédire → prédiction la plus précise ✅' },
     ]
