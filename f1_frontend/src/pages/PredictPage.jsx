@@ -183,12 +183,7 @@ export default function PredictPage() {
               }
             </select>
           </div>
-          <div className="form-group">
-            <label className="form-label">N° manche</label>
-            <input type="number" value={round} min={1} max={24}
-              onChange={e => setRound(+e.target.value)}
-              style={{ width:'70px' }} />
-          </div>
+          {/* N° manche caché — déduit automatiquement du GP sélectionné */}
         </div>
 
         {raceDate && (
