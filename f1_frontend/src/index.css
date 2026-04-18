@@ -168,6 +168,12 @@ select, input[type="number"] {
 }
 select:focus, input:focus { border-color: var(--red); }
 
+input::placeholder {
+  color: var(--muted);
+  font-style: italic;
+  opacity: 0.7;
+}
+
 /* ── Checkbox ───────────────────────────────────────────────── */
 .checkbox-row {
   display: flex;

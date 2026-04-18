@@ -388,32 +388,44 @@ def _get_race_results_csv(year: int, race_name: str, sprint: bool = False) -> li
 
 
 def _team_color(team_name: str) -> str:
-    """Retourne la couleur hex d une écurie depuis son nom."""
+    """Retourne la couleur hex d une écurie depuis son nom (partiel ou complet)."""
     if not team_name:
         return "#888888"
     t = str(team_name).lower()
-    # Correspondances exactes d abord
-    for key, color in TEAM_COLORS.items():
-        if key in t:
-            return color
-    # Correspondances partielles Jolpica (noms complets)
-    JOLPICA_MAP = {
-        "red bull racing":   "#3671C6",
-        "scuderia ferrari":  "#E8002D",
-        "mercedes-amg":      "#27F4D2",
-        "mclaren f1":        "#FF8000",
-        "aston martin f1":   "#229971",
-        "alpine f1":         "#FF87BC",
-        "williams racing":   "#64C4FF",
-        "visa cash app rb":  "#6692FF",
-        "kick sauber f1":    "#52E252",
-        "monza haas":        "#B6BABD",
-        "haas f1":           "#B6BABD",
-        "racing bulls":      "#6692FF",
-        "sauber":            "#52E252",
-    }
-    for key, color in JOLPICA_MAP.items():
-        if key in t or t in key:
+    # Table de correspondance par mot-clé — ordre du plus spécifique au plus général
+    KEYWORDS = [
+        ("red bull",    "#3671C6"),
+        ("ferrari",     "#E8002D"),
+        ("mercedes",    "#27F4D2"),
+        ("mclaren",     "#FF8000"),
+        ("aston martin","#229971"),
+        ("alpine",      "#FF87BC"),
+        ("williams",    "#64C4FF"),
+        ("racing bulls","#6692FF"),
+        ("rb f1",       "#6692FF"),
+        ("visa cash",   "#6692FF"),
+        ("alphatauri",  "#5E8FAA"),
+        ("toro rosso",  "#469BFF"),
+        ("kick sauber", "#52E252"),
+        ("sauber",      "#52E252"),
+        ("haas",        "#B6BABD"),
+        ("alfa romeo",  "#C92D4B"),
+        ("racing point","#F596C8"),
+        ("force india", "#FF80C7"),
+        ("renault",     "#FFF500"),
+        ("lotus",       "#FFB800"),
+        ("manor",       "#FF0000"),
+        ("marussia",    "#FF0000"),
+        ("caterham",    "#00A550"),
+        ("toyota",      "#CC0000"),
+        ("honda",       "#FFFFFF"),
+        ("bmw",         "#6699CC"),
+        ("jordan",      "#FFD700"),
+        ("jaguar",      "#00572D"),
+        ("brawn",       "#80FF00"),
+    ]
+    for keyword, color in KEYWORDS:
+        if keyword in t:
             return color
     return "#888888"
 

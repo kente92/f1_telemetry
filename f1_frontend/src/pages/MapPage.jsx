@@ -11,9 +11,9 @@ function RangeSlider({ min, max, value, onChange }) {
   const pct = v => ((v - min) / (max - min)) * 100
   const fromPct = pct(from)
   const toPct   = pct(to)
-  // Z-index dynamique : le curseur proche du min passe devant si les deux se chevauchent
-  const fromZ = from > (min + max) / 2 ? 5 : 4
-  const toZ   = fromZ === 5 ? 4 : 5
+  // Borne basse (from) toujours au-dessus par défaut pour faciliter la sélection
+  const fromZ = 5
+  const toZ   = 4
 
   return (
     <div style={{ position:'relative', height:'48px', userSelect:'none' }}>
@@ -164,18 +164,16 @@ export default function MapPage() {
         <div className="form-group">
           <label className="form-label">Jour (1-31)</label>
           <input type="number" min={1} max={31}
-            value={bdayDay}
+            value={bdayDay} placeholder="ex: 15"
             onChange={e => setBdayDay(e.target.value)}
-            style={{ width:'80px', color: bdayDay ? 'var(--text)' : 'var(--muted)',
-              fontWeight: bdayDay ? '600' : '400' }} />
+            style={{ width:'80px' }} />
         </div>
         <div className="form-group">
           <label className="form-label">Mois (1-12)</label>
           <input type="number" min={1} max={12}
-            value={bdayMonth}
+            value={bdayMonth} placeholder="ex: 6"
             onChange={e => setBdayMonth(e.target.value)}
-            style={{ width:'80px', color: bdayMonth ? 'var(--text)' : 'var(--muted)',
-              fontWeight: bdayMonth ? '600' : '400' }} />
+            style={{ width:'80px' }} />
         </div>
         <button className="btn" onClick={searchBday}
           disabled={!bdayDay || !bdayMonth}

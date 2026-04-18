@@ -19,7 +19,10 @@ export default function App() {
   return (
     <div className="app-layout">
       <nav className="navbar">
-        <NavLink to="/" className="navbar-brand">F1 App</NavLink>
+        <NavLink to="/" className="navbar-brand" style={{ lineHeight:1.1 }}>
+          <span style={{ display:'block', fontSize:'1.5rem' }}>F1</span>
+          <span style={{ display:'block', fontSize:'0.9rem', letterSpacing:'0.15em' }}>BIG SEB</span>
+        </NavLink>
         <ul className="navbar-links">
           {LINKS.map(({ to, label }) => (
             <li key={to}>
