@@ -393,40 +393,52 @@ def _team_color(team_name: str) -> str:
         return "#888888"
     t = str(team_name).lower()
     # Table de correspondance par mot-clé — ordre du plus spécifique au plus général
+    # Ordre important : du plus spécifique au plus général
     KEYWORDS = [
-        ("red bull",    "#3671C6"),
-        ("ferrari",     "#E8002D"),
-        ("mercedes",    "#27F4D2"),
-        ("mclaren",     "#FF8000"),
-        ("aston martin","#229971"),
-        ("alpine",      "#FF87BC"),
-        ("williams",    "#64C4FF"),
-        ("racing bulls","#6692FF"),
-        ("rb f1",       "#6692FF"),
-        ("visa cash",   "#6692FF"),
-        ("alphatauri",  "#5E8FAA"),
-        ("toro rosso",  "#469BFF"),
-        ("kick sauber", "#52E252"),
-        ("sauber",      "#52E252"),
-        ("haas",        "#B6BABD"),
-        ("alfa romeo",  "#C92D4B"),
-        ("racing point","#F596C8"),
-        ("force india", "#FF80C7"),
-        ("renault",     "#FFF500"),
-        ("lotus",       "#FFB800"),
-        ("manor",       "#FF0000"),
-        ("marussia",    "#FF0000"),
-        ("caterham",    "#00A550"),
-        ("toyota",      "#CC0000"),
-        ("honda",       "#FFFFFF"),
-        ("bmw",         "#6699CC"),
-        ("jordan",      "#FFD700"),
-        ("jaguar",      "#00572D"),
-        ("brawn",       "#80FF00"),
+        # 2026 / noms complets Jolpica
+        ("red bull racing",         "#3671C6"),
+        ("scuderia ferrari",        "#E8002D"),
+        ("mercedes-amg",            "#27F4D2"),
+        ("mclaren formula 1",       "#FF8000"),
+        ("aston martin aramco",     "#229971"),
+        ("bwt alpine",              "#FF87BC"),
+        ("williams racing",         "#64C4FF"),
+        ("visa cash app rb",        "#6692FF"),
+        ("racing bulls",            "#6692FF"),
+        ("kick sauber",             "#52E252"),
+        ("haas f1 team",            "#B6BABD"),
+        # Mots-clés courts (fallback)
+        ("red bull",                "#3671C6"),
+        ("ferrari",                 "#E8002D"),
+        ("mercedes",                "#27F4D2"),
+        ("mclaren",                 "#FF8000"),
+        ("aston martin",            "#229971"),
+        ("alpine",                  "#FF87BC"),
+        ("williams",                "#64C4FF"),
+        ("alphatauri",              "#5E8FAA"),
+        ("toro rosso",              "#469BFF"),
+        ("sauber",                  "#52E252"),
+        ("haas",                    "#B6BABD"),
+        ("alfa romeo",              "#C92D4B"),
+        ("racing point",            "#F596C8"),
+        ("force india",             "#FF80C7"),
+        ("renault",                 "#FFF500"),
+        ("lotus",                   "#FFB800"),
+        ("manor",                   "#FF0000"),
+        ("marussia",                "#FF0000"),
+        ("caterham",                "#00A550"),
+        ("toyota",                  "#CC0000"),
+        ("bmw",                     "#6699CC"),
+        ("jordan",                  "#FFD700"),
+        ("jaguar",                  "#00572D"),
+        ("brawn",                   "#80FF00"),
+        ("bar",                     "#FFFFFF"),
     ]
     for keyword, color in KEYWORDS:
         if keyword in t:
             return color
+    # Log pour debug si aucune couleur trouvée
+    log.debug(f"Team color not found for: {team_name!r}")
     return "#888888"
 
 

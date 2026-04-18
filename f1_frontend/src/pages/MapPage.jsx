@@ -11,9 +11,9 @@ function RangeSlider({ min, max, value, onChange }) {
   const pct = v => ((v - min) / (max - min)) * 100
   const fromPct = pct(from)
   const toPct   = pct(to)
-  // Borne basse (from) toujours au-dessus par défaut pour faciliter la sélection
-  const fromZ = 5
-  const toZ   = 4
+  // Borne basse (from) au-dessus par défaut, sauf si elle est au max
+  const fromZ = from >= to - 1 ? 4 : 5
+  const toZ   = from >= to - 1 ? 5 : 4
 
   return (
     <div style={{ position:'relative', height:'48px', userSelect:'none' }}>
@@ -166,14 +166,14 @@ export default function MapPage() {
           <input type="number" min={1} max={31}
             value={bdayDay} placeholder="ex: 15"
             onChange={e => setBdayDay(e.target.value)}
-            style={{ width:'80px' }} />
+            style={{ width:'90px', fontSize:'1rem', padding:'0.6rem' }} />
         </div>
         <div className="form-group">
           <label className="form-label">Mois (1-12)</label>
           <input type="number" min={1} max={12}
             value={bdayMonth} placeholder="ex: 6"
             onChange={e => setBdayMonth(e.target.value)}
-            style={{ width:'80px' }} />
+            style={{ width:'90px', fontSize:'1rem', padding:'0.6rem' }} />
         </div>
         <button className="btn" onClick={searchBday}
           disabled={!bdayDay || !bdayMonth}
