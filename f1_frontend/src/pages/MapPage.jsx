@@ -63,7 +63,7 @@ export default function MapPage() {
           </label>
           <div style={{ display:'flex', gap:'0.4rem', flexWrap:'wrap', marginTop:'0.4rem' }}>
             {[
-              { label:'Toute l'histoire', from:1950, to:MAX_YEAR },
+              { label:"Toute l'histoire", from:1950, to:MAX_YEAR },
               { label:'Depuis 1980',       from:1980, to:MAX_YEAR },
               { label:'Depuis 2000',       from:2000, to:MAX_YEAR },
               { label:'Depuis 2010',       from:2010, to:MAX_YEAR },
