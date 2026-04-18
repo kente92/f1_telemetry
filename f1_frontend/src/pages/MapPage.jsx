@@ -6,30 +6,6 @@ const PROJECTIONS = ['natural earth','mercator','orthographic','equirectangular'
 const MIN_YEAR = 1950
 const MAX_YEAR = new Date().getFullYear()
 
-function RangeSlider({ min, max, value, onChange }) {
-  const [from, to] = value
-  return (
-    <div style={{ display:'flex', flexDirection:'column', gap:'0.6rem' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:'0.8rem' }}>
-        <span style={{ fontSize:'0.75rem', color:'var(--muted)', minWidth:'28px' }}>De</span>
-        <input type="range" min={min} max={to} value={from}
-          onChange={e => onChange([+e.target.value, to])}
-          style={{ flex:1, accentColor:'var(--red)', height:'4px', cursor:'pointer' }} />
-        <span style={{ fontFamily:'Barlow Condensed', fontWeight:700,
-          color:'var(--text)', minWidth:'38px', textAlign:'right' }}>{from}</span>
-      </div>
-      <div style={{ display:'flex', alignItems:'center', gap:'0.8rem' }}>
-        <span style={{ fontSize:'0.75rem', color:'var(--muted)', minWidth:'28px' }}>À</span>
-        <input type="range" min={from} max={max} value={to}
-          onChange={e => onChange([from, +e.target.value])}
-          style={{ flex:1, accentColor:'var(--red)', height:'4px', cursor:'pointer' }} />
-        <span style={{ fontFamily:'Barlow Condensed', fontWeight:700,
-          color:'var(--text)', minWidth:'38px', textAlign:'right' }}>{to}</span>
-      </div>
-    </div>
-  )
-}
-
 
 export default function MapPage() {
   const [races,      setRaces]      = useState([])
@@ -77,21 +53,39 @@ export default function MapPage() {
 
       <div className="section-title">Carte mondiale des circuits</div>
 
-      <div style={{ display:'flex', gap:'1.5rem', flexWrap:'wrap', marginBottom:'1rem', alignItems:'flex-end' }}>
-        <div className="form-group" style={{ flex:'1', minWidth:'300px' }}>
+      <div style={{ display:'flex', gap:'1rem', flexWrap:'wrap', marginBottom:'1rem', alignItems:'flex-end' }}>
+        <div className="form-group" style={{ flex:'1', minWidth:'260px' }}>
           <label className="form-label">
-            Années : <strong style={{ color:'var(--text)' }}>{yearRange[0]}</strong>
+            Période — <strong style={{ color:'var(--text)' }}>{yearRange[0]}</strong>
             {' → '}
             <strong style={{ color:'var(--text)' }}>{yearRange[1]}</strong>
             <span style={{ color:'var(--muted)', marginLeft:'0.5rem' }}>({filtered.length} GP)</span>
           </label>
-          <RangeSlider min={MIN_YEAR} max={MAX_YEAR} value={yearRange} onChange={setYearRange} />
-          <div style={{ display:'flex', gap:'0.4rem', marginTop:'0.3rem', flexWrap:'wrap' }}>
-            {[[1950,MAX_YEAR],[1980,MAX_YEAR],[2000,MAX_YEAR],[2010,MAX_YEAR],[2020,MAX_YEAR]].map(([a,b]) => (
-              <button key={a} className="btn btn-outline"
-                style={{ padding:'0.2rem 0.6rem', fontSize:'0.75rem' }}
-                onClick={() => setYearRange([a, b])}>
-                {a}+
+          <div style={{ display:'flex', gap:'0.4rem', flexWrap:'wrap', marginTop:'0.4rem' }}>
+            {[
+              { label:'Toute l'histoire', from:1950, to:MAX_YEAR },
+              { label:'Depuis 1980',       from:1980, to:MAX_YEAR },
+              { label:'Depuis 2000',       from:2000, to:MAX_YEAR },
+              { label:'Depuis 2010',       from:2010, to:MAX_YEAR },
+              { label:'Depuis 2020',       from:2020, to:MAX_YEAR },
+              { label:'Saison en cours',   from:MAX_YEAR, to:MAX_YEAR },
+            ].map(({ label, from, to }) => (
+              <button key={label}
+                onClick={() => setYearRange([from, to])}
+                style={{
+                  padding:'0.35rem 0.7rem',
+                  fontSize:'0.78rem',
+                  fontFamily:'Barlow Condensed',
+                  fontWeight:600,
+                  letterSpacing:'0.05em',
+                  borderRadius:'4px',
+                  cursor:'pointer',
+                  border: `1px solid ${yearRange[0]===from && yearRange[1]===to ? 'var(--red)' : 'var(--border)'}`,
+                  background: yearRange[0]===from && yearRange[1]===to ? 'rgba(232,0,45,0.15)' : 'var(--bg2)',
+                  color: yearRange[0]===from && yearRange[1]===to ? 'var(--red)' : 'var(--muted)',
+                  transition:'all 0.15s',
+                }}>
+                {label}
               </button>
             ))}
           </div>
