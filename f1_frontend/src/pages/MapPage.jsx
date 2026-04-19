@@ -54,40 +54,52 @@ export default function MapPage() {
       <div className="section-title">Carte mondiale des circuits</div>
 
       <div style={{ display:'flex', gap:'1rem', flexWrap:'wrap', marginBottom:'1rem', alignItems:'flex-end' }}>
-        <div className="form-group" style={{ flex:'1', minWidth:'260px' }}>
+        <div style={{ flex:'1', minWidth:'260px' }}>
           <label className="form-label">
-            Période — <strong style={{ color:'var(--text)' }}>{yearRange[0]}</strong>
+            Période : <strong style={{ color:'var(--text)' }}>{yearRange[0]}</strong>
             {' → '}
             <strong style={{ color:'var(--text)' }}>{yearRange[1]}</strong>
             <span style={{ color:'var(--muted)', marginLeft:'0.5rem' }}>({filtered.length} GP)</span>
           </label>
-          <div style={{ display:'flex', gap:'0.4rem', flexWrap:'wrap', marginTop:'0.4rem' }}>
+          <div style={{ display:'flex', gap:'0.6rem', alignItems:'center', margin:'0.5rem 0' }}>
+            <select value={yearRange[0]}
+              onChange={e => setYearRange([+e.target.value, Math.max(+e.target.value, yearRange[1])])}
+              style={{ flex:1 }}>
+              {Array.from({length: MAX_YEAR - MIN_YEAR + 1}, (_, i) => MIN_YEAR + i).map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+            <span style={{ color:'var(--muted)' }}>→</span>
+            <select value={yearRange[1]}
+              onChange={e => setYearRange([Math.min(yearRange[0], +e.target.value), +e.target.value])}
+              style={{ flex:1 }}>
+              {Array.from({length: MAX_YEAR - MIN_YEAR + 1}, (_, i) => MIN_YEAR + i).map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ display:'flex', gap:'0.4rem', flexWrap:'wrap' }}>
             {[
-              { label:"Toute l'histoire", from:1950, to:MAX_YEAR },
-              { label:'Depuis 1980',       from:1980, to:MAX_YEAR },
-              { label:'Depuis 2000',       from:2000, to:MAX_YEAR },
-              { label:'Depuis 2010',       from:2010, to:MAX_YEAR },
-              { label:'Depuis 2020',       from:2020, to:MAX_YEAR },
-              { label:'Saison en cours',   from:MAX_YEAR, to:MAX_YEAR },
-            ].map(({ label, from, to }) => (
-              <button key={label}
-                onClick={() => setYearRange([from, to])}
-                style={{
-                  padding:'0.35rem 0.7rem',
-                  fontSize:'0.78rem',
-                  fontFamily:'Barlow Condensed',
-                  fontWeight:600,
-                  letterSpacing:'0.05em',
-                  borderRadius:'4px',
-                  cursor:'pointer',
-                  border: `1px solid ${yearRange[0]===from && yearRange[1]===to ? 'var(--red)' : 'var(--border)'}`,
-                  background: yearRange[0]===from && yearRange[1]===to ? 'rgba(232,0,45,0.15)' : 'var(--bg2)',
-                  color: yearRange[0]===from && yearRange[1]===to ? 'var(--red)' : 'var(--muted)',
-                  transition:'all 0.15s',
-                }}>
-                {label}
-              </button>
-            ))}
+              { label:"Tout", from:1950, to:MAX_YEAR },
+              { label:'1980+', from:1980, to:MAX_YEAR },
+              { label:'2000+', from:2000, to:MAX_YEAR },
+              { label:'2010+', from:2010, to:MAX_YEAR },
+              { label:'2020+', from:2020, to:MAX_YEAR },
+              { label:String(MAX_YEAR), from:MAX_YEAR, to:MAX_YEAR },
+            ].map(({ label, from, to }) => {
+              const active = yearRange[0]===from && yearRange[1]===to
+              return (
+                <button key={label} onClick={() => setYearRange([from, to])}
+                  style={{ padding:'0.25rem 0.6rem', fontSize:'0.75rem',
+                    fontFamily:'Barlow Condensed', fontWeight:600, borderRadius:'4px',
+                    cursor:'pointer', transition:'all 0.15s',
+                    border:`1px solid ${active ? 'var(--red)' : 'var(--border)'}`,
+                    background: active ? 'rgba(232,0,45,0.15)' : 'var(--bg2)',
+                    color: active ? 'var(--red)' : 'var(--muted)' }}>
+                  {label}
+                </button>
+              )
+            })}
           </div>
         </div>
         <div className="form-group">
