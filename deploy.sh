@@ -17,7 +17,9 @@ sudo chown -R ubuntu:ubuntu "$API_DIR" "$FRONTEND_DIR"
 echo "🐍 Déploiement de l'API..."
 cp "$REPO_DIR/f1_api/main.py"          "$API_DIR/"
 cp "$REPO_DIR/f1_api/requirements.txt" "$API_DIR/"
-cp "$REPO_DIR/f1_api/data/"*.csv       "$API_DIR/data/" 2>/dev/null || true
+# Les CSV de $API_DIR/data/ sont tenus à jour en production (maj auto Jolpica) :
+# -n = copie uniquement les CSV absents (installation neuve), sans jamais écraser.
+cp -n "$REPO_DIR/f1_api/data/"*.csv    "$API_DIR/data/" 2>/dev/null || true
 cp "$REPO_DIR/models/"*.joblib         "$API_DIR/models/" 2>/dev/null || true
 
 # Build React sur le VPS
