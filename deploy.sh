@@ -12,10 +12,15 @@ REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 echo "📁 Création des dossiers..."
 sudo mkdir -p "$API_DIR/data" "$API_DIR/models" "$FRONTEND_DIR"
 sudo chown -R ubuntu:ubuntu "$API_DIR" "$FRONTEND_DIR"
+# Archive OpenF1 (jamais ecrasee par le deploiement)
+sudo mkdir -p /var/lib/f1_openf1
+sudo chown ubuntu:ubuntu /var/lib/f1_openf1
 
 # API
 echo "🐍 Déploiement de l'API..."
 cp "$REPO_DIR/f1_api/main.py"          "$API_DIR/"
+cp "$REPO_DIR/f1_api/openf1_data.py"    "$API_DIR/"
+cp "$REPO_DIR/f1_api/openf1_archive.py" "$API_DIR/"
 cp "$REPO_DIR/f1_api/requirements.txt" "$API_DIR/"
 # Les CSV de $API_DIR/data/ sont tenus à jour en production (maj auto Jolpica) :
 # -n = copie uniquement les CSV absents (installation neuve), sans jamais écraser.
@@ -41,8 +46,11 @@ fi
 # Service systemd
 echo "⚙️  Configuration du service..."
 sudo cp "$REPO_DIR/f1_api/f1_api.service" /etc/systemd/system/
+sudo cp "$REPO_DIR/f1_api/systemd/f1-openf1-archive.service" \
+        "$REPO_DIR/f1_api/systemd/f1-openf1-archive.timer" /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable f1_api
+sudo systemctl enable --now f1-openf1-archive.timer   # archive OpenF1 chaque lundi 7 h
 
 if sudo systemctl is-active --quiet f1_api; then
     echo "🔄 Redémarrage..."

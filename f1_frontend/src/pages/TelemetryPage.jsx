@@ -59,7 +59,7 @@ export default function TelemetryPage() {
         .then(p => setPosData(p))
         .catch(e => {
           setPosData(null)
-          if (isTimingUnavailable(e)) setTimingUnavailable(true)
+          if (isTimingUnavailable(e)) setTimingUnavailable(e.code)
         })
 
       // Load telemetry for all drivers
@@ -70,7 +70,7 @@ export default function TelemetryPage() {
           tel[drv] = await apiFetch(`/api/telemetry/${year}/${encodeURIComponent(circuit)}/${drv}?sprint=${isSprint}`)
         } catch (e) {
           // Pas de chronométrage pour cette course : inutile d'interroger les autres pilotes
-          if (isTimingUnavailable(e)) { setTimingUnavailable(true); break }
+          if (isTimingUnavailable(e)) { setTimingUnavailable(e.code); break }
         }
       }
       setTelData(tel)
@@ -205,7 +205,7 @@ export default function TelemetryPage() {
 
       {error && <div className="error">Erreur : {error}</div>}
 
-      {timingUnavailable && <TimingUnavailable />}
+      {timingUnavailable && <TimingUnavailable code={timingUnavailable} />}
 
       {/* Positions chart */}
       {posData && (
@@ -252,6 +252,9 @@ export default function TelemetryPage() {
         Données télémétriques fournies par{' '}
         <a href="https://theoehrly.github.io/Fast-F1/" target="_blank" rel="noreferrer"
           style={{ color:'var(--red)', textDecoration:'none' }}>FastF1</a>
+        {' '}et{' '}
+        <a href="https://openf1.org" target="_blank" rel="noreferrer"
+          style={{ color:'var(--red)', textDecoration:'none' }}>OpenF1</a>
         {' '}· Résultats historiques via{' '}
         <a href="https://api.jolpi.ca" target="_blank" rel="noreferrer"
           style={{ color:'var(--red)', textDecoration:'none' }}>Jolpica / Ergast</a>

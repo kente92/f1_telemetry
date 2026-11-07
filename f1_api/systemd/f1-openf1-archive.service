@@ -1,0 +1,14 @@
+[Unit]
+Description=Archive OpenF1 : ajout des courses et sprints disputes
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/var/www/f1_api
+Environment=PYTHONUNBUFFERED=1
+Environment=F1_OPENF1_DIR=/var/lib/f1_openf1
+ExecStart=/var/www/f1_api/venv/bin/python /var/www/f1_api/openf1_archive.py
+Nice=10

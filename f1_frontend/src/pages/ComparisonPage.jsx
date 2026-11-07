@@ -66,7 +66,7 @@ export default function ComparisonPage() {
       ])
       setTel1(t1); setTel2(t2); setLaps(lapData)
     } catch (e) {
-      if (isTimingUnavailable(e)) setTimingUnavailable(true)
+      if (isTimingUnavailable(e)) setTimingUnavailable(e.code)
       else setError(e.message)
     }
     finally { setLoading(false) }
@@ -234,7 +234,7 @@ export default function ComparisonPage() {
       )}
 
       {error && <div className="error">Erreur : {error}</div>}
-      {timingUnavailable && <TimingUnavailable />}
+      {timingUnavailable && <TimingUnavailable code={timingUnavailable} />}
       {loading && <div className="loading">Chargement des données de comparaison…</div>}
 
       {deltaMap && (
@@ -272,6 +272,9 @@ export default function ComparisonPage() {
         Données télémétriques fournies par{' '}
         <a href="https://theoehrly.github.io/Fast-F1/" target="_blank" rel="noreferrer"
           style={{ color:'var(--red)', textDecoration:'none' }}>FastF1</a>
+        {' '}et{' '}
+        <a href="https://openf1.org" target="_blank" rel="noreferrer"
+          style={{ color:'var(--red)', textDecoration:'none' }}>OpenF1</a>
         {' '}· Résultats historiques via{' '}
         <a href="https://api.jolpi.ca" target="_blank" rel="noreferrer"
           style={{ color:'var(--red)', textDecoration:'none' }}>Jolpica / Ergast</a>

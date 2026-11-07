@@ -22,6 +22,8 @@ try:
 except ImportError:  # API interne FastF1, peut changer selon la version
     class SessionNotAvailableError(Exception): pass
 
+import openf1_data   # archive OpenF1 locale (lecture seule, aucun appel reseau)
+
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("f1_api")
 
@@ -52,6 +54,17 @@ class TimingUnavailable(Exception):
 async def _timing_unavailable_handler(request, exc):
     return JSONResponse(status_code=503,
                         content={"code": "timing_unavailable", "message": TIMING_UNAVAILABLE_MSG})
+
+TIMING_INCOMPLETE_MSG = ("Données de chronométrage incomplètes pour cette course "
+                         "(archive de remplacement OpenF1 partielle).")
+
+class TimingIncomplete(Exception):
+    """Session presente dans l'archive OpenF1 mais sous le seuil de completude."""
+
+@app.exception_handler(TimingIncomplete)
+async def _timing_incomplete_handler(request, exc):
+    return JSONResponse(status_code=503,
+                        content={"code": "timing_incomplete", "message": TIMING_INCOMPLETE_MSG})
 
 CIRCUITS = ["Bahrain","Saudi Arabia","Australia","Japan","China","Miami","Emilia Romagna",
     "Monaco","Canada","Spain","Austria","Great Britain","Hungary","Belgium","Netherlands",
@@ -286,6 +299,11 @@ def _get_timing_session(year, circuit, session_type="R"):
     try:
         sess = _get_session(year, circuit, session_type)
         laps = sess.laps
+    except ValueError as e:
+        # FastF1 : "Session type 'S' does not exist for this event" (week-end sans sprint)
+        if session_type == "S" and "does not exist" in str(e):
+            raise HTTPException(404, "Pas de sprint pour ce Grand Prix") from e
+        raise
     except (DataNotLoadedError, NoLapDataError, SessionNotAvailableError) as e:
         log.warning(f"Timing indisponible {year} {circuit} {session_type}: {e!r}")
         raise TimingUnavailable() from e
@@ -298,6 +316,35 @@ def _get_timing_session(year, circuit, session_type="R"):
         log.warning(f"Timing indisponible {year} {circuit} {session_type}: laps vides")
         raise TimingUnavailable()
     return sess
+
+def _from_openf1(year, circuit, sprint, build):
+    """Repli sur l'archive OpenF1 locale quand FastF1 n'a pas la session.
+    TimingUnavailable si absente, TimingIncomplete si sous le seuil de completude."""
+    race_date = None
+    try:
+        r = store.races[(store.races["year"] == year) & (store.races["raceName"] == circuit)]
+        if not r.empty and pd.notna(r.iloc[0]["date"]):
+            race_date = r.iloc[0]["date"].date().isoformat()
+    except Exception:
+        pass
+    try:
+        s = openf1_data.find_session(year, circuit, race_date, sprint=sprint)
+    except Exception as e:
+        log.exception(f"Archive OpenF1 illisible {year} {circuit}: {e!r}")
+        raise TimingUnavailable() from e
+    if s is None:
+        raise TimingUnavailable()
+    if s.completeness < openf1_data.MIN_COMPLETENESS:
+        log.warning(f"Archive OpenF1 incomplete {year} {circuit} sprint={sprint}: "
+                    f"{s.laps_archived}/{s.laps_expected} tours ({100 * s.completeness:.0f} %)")
+        raise TimingIncomplete()
+    try:
+        return build(s)
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.exception(f"Erreur OpenF1 {year} {circuit}: {e!r}")
+        raise HTTPException(500, f"OpenF1: {e}")
 
 # Palette de couleurs par écurie (fallback si FastF1 plotting indisponible)
 TEAM_COLORS = {
@@ -631,8 +678,10 @@ def get_race_positions(year: int, circuit: str, sprint: bool = False):
 
         return {"drivers": drivers_data, "sc_laps": sc_laps, "vsc_laps": vsc_laps,
                 "year": year, "circuit": circuit}
-    except TimingUnavailable:
+    except HTTPException:
         raise
+    except TimingUnavailable:
+        return _from_openf1(year, circuit, sprint, lambda s: s.positions_payload(year, circuit))
     except Exception as e:
         raise HTTPException(500, str(e))
 
@@ -640,7 +689,7 @@ def get_race_positions(year: int, circuit: str, sprint: bool = False):
 @app.get("/api/telemetry/{year}/{circuit}/{driver}")
 def get_telemetry(year:int, circuit:str, driver:str, sprint:bool=False):
     try:
-        sess = _get_timing_session(year,circuit)
+        sess = _get_timing_session(year, circuit, "S" if sprint else "R")
         lap = sess.laps.pick_driver(driver).pick_fastest()
         if lap is None: raise HTTPException(404,f"Pas de tour pour {driver}")
         tel = lap.get_telemetry().add_distance()
@@ -658,7 +707,14 @@ def get_telemetry(year:int, circuit:str, driver:str, sprint:bool=False):
                 "gear":tel["nGear"].tolist() if "nGear" in tel.columns else [],
                 "x":tel["X"].tolist() if "X" in tel.columns else [],
                 "y":tel["Y"].tolist() if "Y" in tel.columns else []}
-    except (HTTPException, TimingUnavailable): raise
+    except HTTPException: raise
+    except TimingUnavailable:
+        def _build(s):
+            payload = s.telemetry_payload(driver)
+            if payload is None:
+                raise HTTPException(404, f"Pas de tour pour {driver}")
+            return payload
+        return _from_openf1(year, circuit, sprint, _build)
     except Exception as e: raise HTTPException(500,str(e))
 
 @app.get("/api/laps/{year}/{circuit}/{driver1}/{driver2}")
@@ -683,7 +739,9 @@ def get_lap_times(year:int, circuit:str, driver1:str, driver2:str, sprint:bool=F
         except Exception:
             pass
         return {"driver1":_dl(driver1),"driver2":_dl(driver2),"sc_laps":sc_laps,"vsc_laps":vsc_laps}
-    except TimingUnavailable: raise
+    except HTTPException: raise
+    except TimingUnavailable:
+        return _from_openf1(year, circuit, sprint, lambda s: s.laps_payload(driver1, driver2))
     except Exception as e: raise HTTPException(500,str(e))
 
 @app.get("/api/sprint/{year}/{circuit}")
