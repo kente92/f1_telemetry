@@ -52,6 +52,15 @@ LIGHT_ENDPOINTS = ["drivers", "laps", "position", "race_control",
 
 log = logging.getLogger("openf1_archive")
 
+# Code de sortie dedie : OpenF1 refuse l'acces pendant une seance F1 en direct
+# (75 = EX_TEMPFAIL : erreur temporaire, relancer plus tard)
+EXIT_LIVE_SESSION = 75
+LIVE_MARKER = "live f1 session in progress"
+
+
+class LiveSessionBlocked(Exception):
+    """OpenF1 : 401 'Live F1 session in progress' (acces reserve aux abonnes pendant le direct)."""
+
 
 # ── Client HTTP limite ────────────────────────────────────────────────────────
 class RateLimitedClient:
@@ -100,6 +109,8 @@ class RateLimitedClient:
                 if r.status_code == 404:          # OpenF1 : "No results found"
                     return []
                 status, retry_after, err = r.status_code, r.headers.get("Retry-After"), r.text[:200]
+                if status == 401 and LIVE_MARKER in r.text.lower():
+                    raise LiveSessionBlocked(err)
                 if status not in (429,) and status < 500:
                     raise RuntimeError(f"{endpoint}: HTTP {status} {err}")
             pause = delay
@@ -275,6 +286,15 @@ def reindex(index):
     return 0
 
 
+def live_blocked_exit(err, where, remaining, client):
+    log.error("ARRET : OpenF1 refuse l'acces car une seance F1 est en direct "
+              "(401 'Live F1 session in progress'). " + (f"Interrompu sur {where}. " if where else "")
+              + f"{remaining} session(s) non traitee(s), laissee(s) intacte(s) dans index.json ; "
+              f"{client.count} requete(s) envoyee(s). Relancer apres la fin de la seance "
+              f"(les sessions deja archivees seront sautees). Detail : {str(err)[:160]}")
+    return EXIT_LIVE_SESSION
+
+
 # ── Programme principal ──────────────────────────────────────────────────────
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -303,7 +323,10 @@ def main():
     if args.reindex:
         return reindex(index)
     client = RateLimitedClient()
-    sessions = list_sessions(client, years)
+    try:
+        sessions = list_sessions(client, years)
+    except LiveSessionBlocked as e:
+        return live_blocked_exit(e, None, 0, client)
     if args.session_keys:
         sessions = [s for s in sessions if s["session_key"] in args.session_keys]
 
@@ -326,7 +349,12 @@ def main():
         entry = index["sessions"].get(key, {})
         t0, n0 = time.monotonic(), client.count
         try:
-            doc, empty = fetch_session(client, s)
+            try:
+                doc, empty = fetch_session(client, s)
+            except LiveSessionBlocked as e:
+                # Session en cours et suivantes laissees intactes dans index.json
+                return live_blocked_exit(e, f"[{i}/{len(todo)}] {s['year']} {s['type']} {s['meeting_name']}",
+                                         len(todo) - i + 1, client)
             path = session_path(s)
             payload = gzip.compress(json.dumps(doc, ensure_ascii=False, separators=(",", ":")).encode(), 9)
             write_atomic(path, payload)
