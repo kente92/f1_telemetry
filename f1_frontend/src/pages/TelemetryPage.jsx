@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import Plot from 'react-plotly.js'
 import { YEARS, PLOTLY_LAYOUT, PLOTLY_CONFIG } from '../constants'
 import { apiFetch } from '../hooks/useApi'
+import TimingUnavailable, { isTimingUnavailable } from '../components/TimingUnavailable'
 
 const ALL_YEARS = Array.from(
   { length: new Date().getFullYear() - 2017 },
@@ -22,6 +23,7 @@ export default function TelemetryPage() {
   const [loading,      setLoading]      = useState(false)
   const [loadingDrv,   setLoadingDrv]   = useState(null)
   const [error,        setError]        = useState(null)
+  const [timingUnavailable, setTimingUnavailable] = useState(false)
 
   useEffect(() => {
     setLoadingRaces(true)
@@ -40,7 +42,7 @@ export default function TelemetryPage() {
   }, [year])
 
   const loadSession = async () => {
-    setLoading(true); setError(null)
+    setLoading(true); setError(null); setTimingUnavailable(false)
     setTelData({}); setDrivers([]); setSelected([]); setPosData(null)
     try {
       const d = await apiFetch(`/api/sessions/${year}/${encodeURIComponent(circuit)}?sprint=${isSprint}`)
@@ -53,9 +55,12 @@ export default function TelemetryPage() {
         .catch(() => setHasSprint(false))
 
       // Load positions
-      fetch(`/api/positions/${year}/${encodeURIComponent(circuit)}?sprint=${isSprint}`)
-        .then(r => r.json()).then(p => setPosData(p))
-        .catch(() => setPosData(null))
+      apiFetch(`/api/positions/${year}/${encodeURIComponent(circuit)}?sprint=${isSprint}`)
+        .then(p => setPosData(p))
+        .catch(e => {
+          setPosData(null)
+          if (isTimingUnavailable(e)) setTimingUnavailable(true)
+        })
 
       // Load telemetry for all drivers
       const tel = {}
@@ -63,7 +68,10 @@ export default function TelemetryPage() {
         setLoadingDrv(drv)
         try {
           tel[drv] = await apiFetch(`/api/telemetry/${year}/${encodeURIComponent(circuit)}/${drv}?sprint=${isSprint}`)
-        } catch {}
+        } catch (e) {
+          // Pas de chronométrage pour cette course : inutile d'interroger les autres pilotes
+          if (isTimingUnavailable(e)) { setTimingUnavailable(true); break }
+        }
       }
       setTelData(tel)
       setLoadingDrv(null)
@@ -196,6 +204,8 @@ export default function TelemetryPage() {
       </div>
 
       {error && <div className="error">Erreur : {error}</div>}
+
+      {timingUnavailable && <TimingUnavailable />}
 
       {/* Positions chart */}
       {posData && (

@@ -15,6 +15,12 @@ import fastf1.plotting
 import joblib, pandas as pd, requests
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastf1.exceptions import DataNotLoadedError, NoLapDataError
+try:
+    from fastf1._api import SessionNotAvailableError
+except ImportError:  # API interne FastF1, peut changer selon la version
+    class SessionNotAvailableError(Exception): pass
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("f1_api")
@@ -22,6 +28,11 @@ log = logging.getLogger("f1_api")
 _VPS_CACHE = "/var/cache/f1"
 _CACHE_DIR = _VPS_CACHE if (os.path.isdir(_VPS_CACHE) and os.access(_VPS_CACHE, os.W_OK)) else tempfile.gettempdir()
 fastf1.Cache.enable_cache(_CACHE_DIR)
+# Depuis oct. 2026, livetiming.formula1.com exige un compte F1TV : on ne sert
+# que le cache local (pas de requete reseau FastF1, echec immediat si absent).
+# F1_FASTF1_OFFLINE=0 pour reactiver les telechargements.
+if os.getenv("F1_FASTF1_OFFLINE", "1") == "1":
+    fastf1.Cache.offline_mode(True)
 
 DATA_DIR   = Path(__file__).parent / "data"
 MODELS_DIR = Path(__file__).parent / "models"
@@ -30,6 +41,17 @@ JOLPICA = "https://api.jolpi.ca/ergast/f1"
 
 app = FastAPI(title="F1 API", version="2.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+TIMING_UNAVAILABLE_MSG = ("Télémétrie indisponible pour cette course "
+                          "(archive de chronométrage F1 non accessible).")
+
+class TimingUnavailable(Exception):
+    """Donnees de chronometrage FastF1 absentes (session non cachee, acces F1TV requis)."""
+
+@app.exception_handler(TimingUnavailable)
+async def _timing_unavailable_handler(request, exc):
+    return JSONResponse(status_code=503,
+                        content={"code": "timing_unavailable", "message": TIMING_UNAVAILABLE_MSG})
 
 CIRCUITS = ["Bahrain","Saudi Arabia","Australia","Japan","China","Miami","Emilia Romagna",
     "Monaco","Canada","Spain","Austria","Great Britain","Hungary","Belgium","Netherlands",
@@ -258,6 +280,24 @@ def _get_session(year, circuit, session_type="R"):
     s = fastf1.get_session(year, circuit, session_type)
     s.load(laps=True, telemetry=True, weather=False, messages=False)
     return s
+
+def _get_timing_session(year, circuit, session_type="R"):
+    """Comme _get_session, mais leve TimingUnavailable si les tours ne sont pas disponibles."""
+    try:
+        sess = _get_session(year, circuit, session_type)
+        laps = sess.laps
+    except (DataNotLoadedError, NoLapDataError, SessionNotAvailableError) as e:
+        log.warning(f"Timing indisponible {year} {circuit} {session_type}: {e!r}")
+        raise TimingUnavailable() from e
+    except AttributeError as e:
+        if "_laps" in str(e):
+            log.warning(f"Timing indisponible {year} {circuit} {session_type}: {e!r}")
+            raise TimingUnavailable() from e
+        raise
+    if laps is None or len(laps) == 0:
+        log.warning(f"Timing indisponible {year} {circuit} {session_type}: laps vides")
+        raise TimingUnavailable()
+    return sess
 
 # Palette de couleurs par écurie (fallback si FastF1 plotting indisponible)
 TEAM_COLORS = {
@@ -546,7 +586,7 @@ def get_session_results(year: int, circuit: str, sprint: bool = False):
 def get_race_positions(year: int, circuit: str, sprint: bool = False):
     """Positions tour par tour pour tous les pilotes + SC/VSC."""
     try:
-        sess = _get_session(year, circuit, "S" if sprint else "R")
+        sess = _get_timing_session(year, circuit, "S" if sprint else "R")
         laps = sess.laps[["DriverNumber","LapNumber","Position","TrackStatus"]].copy()
         laps = laps.dropna(subset=["Position","LapNumber"])
         laps["Position"]  = laps["Position"].astype(int)
@@ -591,6 +631,8 @@ def get_race_positions(year: int, circuit: str, sprint: bool = False):
 
         return {"drivers": drivers_data, "sc_laps": sc_laps, "vsc_laps": vsc_laps,
                 "year": year, "circuit": circuit}
+    except TimingUnavailable:
+        raise
     except Exception as e:
         raise HTTPException(500, str(e))
 
@@ -598,7 +640,7 @@ def get_race_positions(year: int, circuit: str, sprint: bool = False):
 @app.get("/api/telemetry/{year}/{circuit}/{driver}")
 def get_telemetry(year:int, circuit:str, driver:str, sprint:bool=False):
     try:
-        sess = _get_session(year,circuit)
+        sess = _get_timing_session(year,circuit)
         lap = sess.laps.pick_driver(driver).pick_fastest()
         if lap is None: raise HTTPException(404,f"Pas de tour pour {driver}")
         tel = lap.get_telemetry().add_distance()
@@ -616,13 +658,13 @@ def get_telemetry(year:int, circuit:str, driver:str, sprint:bool=False):
                 "gear":tel["nGear"].tolist() if "nGear" in tel.columns else [],
                 "x":tel["X"].tolist() if "X" in tel.columns else [],
                 "y":tel["Y"].tolist() if "Y" in tel.columns else []}
-    except HTTPException: raise
+    except (HTTPException, TimingUnavailable): raise
     except Exception as e: raise HTTPException(500,str(e))
 
 @app.get("/api/laps/{year}/{circuit}/{driver1}/{driver2}")
 def get_lap_times(year:int, circuit:str, driver1:str, driver2:str, sprint:bool=False):
     try:
-        sess = _get_session(year, circuit, "S" if sprint else "R")
+        sess = _get_timing_session(year, circuit, "S" if sprint else "R")
         def _dl(drv):
             laps = sess.laps.pick_driver(drv)[["LapNumber","LapTime","PitOutTime"]].copy()
             laps["s"] = laps["LapTime"].dt.total_seconds()
@@ -641,6 +683,7 @@ def get_lap_times(year:int, circuit:str, driver1:str, driver2:str, sprint:bool=F
         except Exception:
             pass
         return {"driver1":_dl(driver1),"driver2":_dl(driver2),"sc_laps":sc_laps,"vsc_laps":vsc_laps}
+    except TimingUnavailable: raise
     except Exception as e: raise HTTPException(500,str(e))
 
 @app.get("/api/sprint/{year}/{circuit}")

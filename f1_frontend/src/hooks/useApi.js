@@ -29,6 +29,12 @@ export function useApi(url, deps = []) {
 
 export async function apiFetch(url) {
   const r = await fetch(url)
-  if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text()}`)
+  if (!r.ok) {
+    const body = await r.text()
+    const err = new Error(`HTTP ${r.status}: ${body}`)
+    err.status = r.status
+    try { err.code = JSON.parse(body)?.code } catch {}
+    throw err
+  }
   return r.json()
 }

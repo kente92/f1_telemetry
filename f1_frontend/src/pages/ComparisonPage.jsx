@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import Plot from 'react-plotly.js'
 import { CIRCUITS, YEARS, PLOTLY_LAYOUT, PLOTLY_CONFIG } from '../constants'
 import { apiFetch } from '../hooks/useApi'
+import TimingUnavailable, { isTimingUnavailable } from '../components/TimingUnavailable'
 
 export default function ComparisonPage() {
   const [year,    setYear]    = useState(YEARS[0])
@@ -18,6 +19,7 @@ export default function ComparisonPage() {
   const [isSprint,  setIsSprint]  = useState(false)
   const [hasSprint, setHasSprint] = useState(false)
   const [error,   setError]   = useState(null)
+  const [timingUnavailable, setTimingUnavailable] = useState(false)
   useEffect(() => {
     setLoadingRaces(true)
     setCircuit('')
@@ -35,7 +37,7 @@ export default function ComparisonPage() {
   }, [year])
 
   const loadSession = async () => {
-    setLoading(true); setError(null)
+    setLoading(true); setError(null); setTimingUnavailable(false)
     setTel1(null); setTel2(null); setLaps(null); setDrivers([])
     try {
       const sess = await apiFetch(`/api/sessions/${year}/${encodeURIComponent(circuit)}`)
@@ -54,7 +56,8 @@ export default function ComparisonPage() {
 
   const compare = async () => {
     if (!d1 || !d2 || d1 === d2) return
-    setLoading(true); setError(null)
+    setLoading(true); setError(null); setTimingUnavailable(false)
+    setTel1(null); setTel2(null); setLaps(null)
     try {
       const [t1, t2, lapData] = await Promise.all([
         apiFetch(`/api/telemetry/${year}/${encodeURIComponent(circuit)}/${d1}?sprint=${isSprint}`),
@@ -62,7 +65,10 @@ export default function ComparisonPage() {
         apiFetch(`/api/laps/${year}/${encodeURIComponent(circuit)}/${d1}/${d2}?sprint=${isSprint}`),
       ])
       setTel1(t1); setTel2(t2); setLaps(lapData)
-    } catch (e) { setError(e.message) }
+    } catch (e) {
+      if (isTimingUnavailable(e)) setTimingUnavailable(true)
+      else setError(e.message)
+    }
     finally { setLoading(false) }
   }
 
@@ -228,6 +234,7 @@ export default function ComparisonPage() {
       )}
 
       {error && <div className="error">Erreur : {error}</div>}
+      {timingUnavailable && <TimingUnavailable />}
       {loading && <div className="loading">Chargement des données de comparaison…</div>}
 
       {deltaMap && (
